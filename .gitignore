@@ -1,0 +1,52 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Go
+bin/
+dist/
+*.exe
+*.test
+*.out
+vendor/
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.next/
+out/
+build/
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Docker
+*.env.docker
+
+# Terraform / infra
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Test coverage
+coverage/
+*.coverprofile
+
+# Secrets
+*.pem
+*.key
+*.crt

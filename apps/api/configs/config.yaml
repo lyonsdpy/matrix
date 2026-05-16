@@ -1,0 +1,10 @@
+server:
+  addr: ":8080"
+  read_timeout: 30
+  write_timeout: 30
+
+log:
+  level: 0         # -1:debug 0:info 1:warn 2:error
+  format: console  # console | json
+  stdout: true
+  fileout: false
