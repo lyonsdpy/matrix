@@ -1,0 +1,23 @@
+[
+  {
+    "DeviceID": 1001,
+    "Name": "Intel Core i7-10700",
+    "Type": "CPU",
+    "Prop": "8核16线程 2.90GHz",
+    "Vendor": "Intel"
+  },
+  {
+    "DeviceID": 1001,
+    "Name": "Samsung SSD 870 EVO 512GB",
+    "Type": "Disk",
+    "Prop": "512GB SATA SSD",
+    "Vendor": "Samsung"
+  },
+  {
+    "DeviceID": 1001,
+    "Name": "Kingston DDR4 16GB",
+    "Type": "Memory",
+    "Prop": "16384MB DDR4-3200",
+    "Vendor": "Kingston"
+  }
+]

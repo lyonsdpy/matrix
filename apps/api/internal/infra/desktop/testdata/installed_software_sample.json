@@ -1,0 +1,26 @@
+[
+  {
+    "DeviceID": 1001,
+    "DisplayName": "Microsoft Office 365",
+    "Version": "16.0.16827.20130",
+    "Vendor": "Microsoft Corporation",
+    "InstallDate": "2025-09-01",
+    "SoftSize": "4096 MB"
+  },
+  {
+    "DeviceID": 1001,
+    "DisplayName": "Google Chrome",
+    "Version": "122.0.6261.112",
+    "Vendor": "Google LLC",
+    "InstallDate": "2026-02-15",
+    "SoftSize": "280 MB"
+  },
+  {
+    "DeviceID": 1001,
+    "DisplayName": "7-Zip 23.01",
+    "Version": "23.01",
+    "Vendor": "Igor Pavlov",
+    "InstallDate": "",
+    "SoftSize": ""
+  }
+]

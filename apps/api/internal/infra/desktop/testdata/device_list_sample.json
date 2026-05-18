@@ -1,0 +1,42 @@
+[
+  {
+    "DeviceID": 1001,
+    "IP": "172.31.1.101",
+    "AllIP": "172.31.1.101;10.0.0.5",
+    "AllMAC": "AA:BB:CC:DD:EE:01",
+    "DevName": "WIN-WORKSTATION-01",
+    "ComputerName": "WIN-WORKSTATION-01",
+    "MAC": "AA:BB:CC:DD:EE:01",
+    "DeviceType": 101,
+    "Online": true,
+    "UserName": "zhangsan",
+    "LastTime": "2026-03-10T09:00:00+08:00",
+    "OSName": "Windows 10 Pro",
+    "OSVersion": "10.0.19045",
+    "CPU": "Intel Core i7-10700",
+    "MemoryMB": 16384,
+    "DiskSizeGB": 512,
+    "AgentVersion": "5.2.1",
+    "UUID": "550e8400-e29b-41d4-a716-446655440001"
+  },
+  {
+    "DeviceID": 1002,
+    "IP": "172.31.1.102",
+    "AllIP": "172.31.1.102",
+    "AllMAC": "AA:BB:CC:DD:EE:02",
+    "DevName": "ANDROID-PIXEL-7",
+    "ComputerName": "",
+    "MAC": "AA:BB:CC:DD:EE:02",
+    "DeviceType": 103,
+    "Online": false,
+    "UserName": "lisi",
+    "LastTime": "2026-03-09T18:30:00+08:00",
+    "OSName": "Android 14",
+    "OSVersion": "14.0",
+    "CPU": "Google Tensor G2",
+    "MemoryMB": 8192,
+    "DiskSizeGB": 128,
+    "AgentVersion": "5.2.1",
+    "UUID": "550e8400-e29b-41d4-a716-446655440002"
+  }
+]
