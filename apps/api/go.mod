@@ -57,7 +57,10 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/urfave/cli/v3 v3.7.0 // indirect
+	github.com/vikstrous/dataloadgen v0.0.10 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
+	go.opentelemetry.io/otel v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
