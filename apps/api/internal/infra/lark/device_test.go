@@ -5,20 +5,18 @@ import (
 	"testing"
 
 	larksecurity "github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v2"
-
-	domain "matrix/api/domain/lark"
 )
 
 func TestConvertDevice(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larksecurity.DeviceRecord
-		want  domain.Device
+		want  Device
 	}{
 		{
 			name:  "nil device",
 			input: nil,
-			want:  domain.Device{},
+			want:  Device{},
 		},
 		{
 			name: "all fields",
@@ -31,7 +29,7 @@ func TestConvertDevice(t *testing.T) {
 				DeviceOwnership:    ptrInt(1),
 				SerialNumber:       ptrStr("SN123456"),
 			},
-			want: domain.Device{
+			want: Device{
 				DeviceID:     "device001",
 				DeviceName:   "MacBook Pro",
 				Platform:     fmt.Sprintf("%d", 2),
@@ -46,7 +44,7 @@ func TestConvertDevice(t *testing.T) {
 			input: &larksecurity.DeviceRecord{
 				DeviceRecordId: ptrStr("device002"),
 			},
-			want: domain.Device{
+			want: Device{
 				DeviceID: "device002",
 			},
 		},
@@ -57,7 +55,7 @@ func TestConvertDevice(t *testing.T) {
 				DeviceTerminalType: ptrInt(4),
 				DeviceStatus:       ptrInt(3),
 			},
-			want: domain.Device{
+			want: Device{
 				DeviceID:   "device003",
 				Platform:   fmt.Sprintf("%d", 4),
 				TrustLevel: fmt.Sprintf("%d", 3),

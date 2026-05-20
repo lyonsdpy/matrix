@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"matrix/api/domain/queue"
+	"matrix/api/internal/infra/queue"
 )
 
 func TestBotInteractionRepo_Enqueue(t *testing.T) {

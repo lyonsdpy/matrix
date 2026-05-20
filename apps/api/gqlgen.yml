@@ -1,0 +1,41 @@
+schema:
+  - graph/*.graphqls
+exec:
+  package: graph
+  layout: single-file
+  filename: graph/generated.go
+autobind:
+  - "matrix/api/domain"
+model:
+  filename: graph/model/models_gen.go
+  package: model
+resolver:
+  package: graph
+  layout: follow-schema
+  dir: graph
+  filename_template: "{name}.resolvers.go"
+models:
+  MAP:
+    model:
+      - github.com/99designs/gqlgen/graphql.Map
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int32
+  Int64:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int64
+  UInt32:
+    model:
+      - matrix/api/domain.UInt32
+  Device:
+    model:
+      - matrix/api/domain.Device
+  IPv4Addr:
+    model:
+      - matrix/api/domain.IPv4Addr
+  GraphRelation:
+    model:
+      - matrix/api/domain.GraphRelation

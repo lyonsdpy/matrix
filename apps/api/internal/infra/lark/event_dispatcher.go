@@ -13,8 +13,6 @@ import (
 	larksecurity "github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v2"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	"go.uber.org/zap"
-
-	domain "matrix/api/domain/lark"
 )
 
 // EventDispatcher 管理飞书 SDK 长连接，统一接收所有事件并分发给注册的 handler。
@@ -22,11 +20,11 @@ import (
 type EventDispatcher struct {
 	appID          string
 	appSecret      string
-	contactHandler domain.ContactEventHandler
-	deviceHandler  domain.DeviceEventHandler
-	messageHandler domain.MessageEventHandler
-	cardHandler    domain.CardEventHandler
-	menuHandler    domain.MenuEventHandler
+	contactHandler ContactEventHandler
+	deviceHandler  DeviceEventHandler
+	messageHandler MessageEventHandler
+	cardHandler    CardEventHandler
+	menuHandler    MenuEventHandler
 	logger         *zap.Logger
 }
 
@@ -34,28 +32,28 @@ type EventDispatcher struct {
 type EventDispatcherOption func(*EventDispatcher)
 
 // WithContactHandler 注册通讯录事件处理器。
-func WithContactHandler(h domain.ContactEventHandler) EventDispatcherOption {
+func WithContactHandler(h ContactEventHandler) EventDispatcherOption {
 	return func(d *EventDispatcher) { d.contactHandler = h }
 }
 
 // WithDeviceHandler 注册设备变更事件处理器。
-func WithDeviceHandler(h domain.DeviceEventHandler) EventDispatcherOption {
+func WithDeviceHandler(h DeviceEventHandler) EventDispatcherOption {
 	return func(d *EventDispatcher) { d.deviceHandler = h }
 }
 
 // WithMessageHandler 注册消息事件处理器。
-func WithMessageHandler(h domain.MessageEventHandler) EventDispatcherOption {
+func WithMessageHandler(h MessageEventHandler) EventDispatcherOption {
 	return func(d *EventDispatcher) { d.messageHandler = h }
 }
 
 // WithCardHandler 注册卡片交互事件处理器。
 // 通过 EventDispatcher.OnP2CardActionTrigger 注册，走 WS 长连接接收 card.action.trigger 回调。
-func WithCardHandler(h domain.CardEventHandler) EventDispatcherOption {
+func WithCardHandler(h CardEventHandler) EventDispatcherOption {
 	return func(d *EventDispatcher) { d.cardHandler = h }
 }
 
 // WithMenuHandler 注册机器人菜单点击事件处理器。
-func WithMenuHandler(h domain.MenuEventHandler) EventDispatcherOption {
+func WithMenuHandler(h MenuEventHandler) EventDispatcherOption {
 	return func(d *EventDispatcher) { d.menuHandler = h }
 }
 
@@ -241,8 +239,8 @@ func (d *EventDispatcher) handleBotMenu(ctx context.Context, event *larkapplicat
 			openID = *event.Event.Operator.OperatorId.OpenId
 		}
 	}
-	menuEvent := domain.BotMenuEvent{
-		Type:     domain.EventBotMenu,
+	menuEvent := BotMenuEvent{
+		Type:     EventBotMenu,
 		EventKey: eventKey,
 		UserID:   userID,
 		OpenID:   openID,
@@ -275,7 +273,7 @@ func (d *EventDispatcher) handleCardAction(ctx context.Context, event *callback.
 	if d.cardHandler == nil || event.Event == nil {
 		return nil
 	}
-	action := domain.CardAction{}
+	action := CardAction{}
 	if event.Event.Action != nil {
 		if v, ok := event.Event.Action.Value["action"].(string); ok {
 			action.Action = v
@@ -298,12 +296,12 @@ func (d *EventDispatcher) handleCardAction(ctx context.Context, event *callback.
 
 // --- 转换函数 ---
 
-// convertUserEvent 将 SDK UserEvent（事件体中的用户数据）转换为 domain.User。
-func convertUserEvent(u *larkcontact.UserEvent) domain.User {
+// convertUserEvent 将 SDK UserEvent（事件体中的用户数据）转换为 User。
+func convertUserEvent(u *larkcontact.UserEvent) User {
 	if u == nil {
-		return domain.User{}
+		return User{}
 	}
-	user := domain.User{
+	user := User{
 		DepartmentIDs: u.DepartmentIds,
 	}
 	if u.UserId != nil {
@@ -322,13 +320,13 @@ func convertUserEvent(u *larkcontact.UserEvent) domain.User {
 	return user
 }
 
-// convertDepartmentEvent 将 SDK DepartmentEvent（事件体中的部门数据）转换为 domain.Department。
+// convertDepartmentEvent 将 SDK DepartmentEvent（事件体中的部门数据）转换为 Department。
 // 注意：事件体不含 MemberCount，该字段保持零值。
-func convertDepartmentEvent(d *larkcontact.DepartmentEvent) domain.Department {
+func convertDepartmentEvent(d *larkcontact.DepartmentEvent) Department {
 	if d == nil {
-		return domain.Department{}
+		return Department{}
 	}
-	dept := domain.Department{}
+	dept := Department{}
 	if d.DepartmentId != nil {
 		dept.DepartmentID = *d.DepartmentId
 	}
@@ -345,12 +343,12 @@ func convertDepartmentEvent(d *larkcontact.DepartmentEvent) domain.Department {
 	return dept
 }
 
-// convertDeviceChangeEvent 将 SDK DeviceChangeEvent（设备变更快照）转换为 domain.Device。
-func convertDeviceChangeEvent(e *larksecurity.DeviceChangeEvent) domain.Device {
+// convertDeviceChangeEvent 将 SDK DeviceChangeEvent（设备变更快照）转换为 Device。
+func convertDeviceChangeEvent(e *larksecurity.DeviceChangeEvent) Device {
 	if e == nil {
-		return domain.Device{}
+		return Device{}
 	}
-	dev := domain.Device{}
+	dev := Device{}
 	if e.DeviceRecordId != nil {
 		dev.DeviceID = *e.DeviceRecordId
 	}
@@ -375,12 +373,12 @@ func convertDeviceChangeEvent(e *larksecurity.DeviceChangeEvent) domain.Device {
 	return dev
 }
 
-// convertEventMessage 将 SDK EventMessage 和 EventSender 转换为 domain.Message。
-func convertEventMessage(msg *larkim.EventMessage, sender *larkim.EventSender) domain.Message {
+// convertEventMessage 将 SDK EventMessage 和 EventSender 转换为 Message。
+func convertEventMessage(msg *larkim.EventMessage, sender *larkim.EventSender) Message {
 	if msg == nil {
-		return domain.Message{}
+		return Message{}
 	}
-	m := domain.Message{}
+	m := Message{}
 	if msg.MessageId != nil {
 		m.MessageID = *msg.MessageId
 	}

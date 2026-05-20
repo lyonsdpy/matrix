@@ -4,20 +4,18 @@ import (
 	"testing"
 
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
-
-	domain "matrix/api/domain/lark"
 )
 
 func TestConvertUser(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larkcontact.User
-		want  domain.User
+		want  User
 	}{
 		{
 			name:  "nil user",
 			input: nil,
-			want:  domain.User{},
+			want:  User{},
 		},
 		{
 			name: "all fields activated",
@@ -29,7 +27,7 @@ func TestConvertUser(t *testing.T) {
 				Status:        &larkcontact.UserStatus{IsActivated: ptrBool(true)},
 				DepartmentIds: []string{"dept1", "dept2"},
 			},
-			want: domain.User{
+			want: User{
 				UserID:        "user123",
 				Name:          "张三",
 				Email:         "zs@example.com",
@@ -44,7 +42,7 @@ func TestConvertUser(t *testing.T) {
 				UserId: ptrStr("user456"),
 				Status: &larkcontact.UserStatus{IsFrozen: ptrBool(true)},
 			},
-			want: domain.User{
+			want: User{
 				UserID: "user456",
 				Status: 2,
 			},
@@ -55,7 +53,7 @@ func TestConvertUser(t *testing.T) {
 				UserId: ptrStr("user789"),
 				Status: &larkcontact.UserStatus{IsUnjoin: ptrBool(true)},
 			},
-			want: domain.User{
+			want: User{
 				UserID: "user789",
 				Status: 4,
 			},
@@ -65,7 +63,7 @@ func TestConvertUser(t *testing.T) {
 			input: &larkcontact.User{
 				UserId: ptrStr("user000"),
 			},
-			want: domain.User{
+			want: User{
 				UserID: "user000",
 				Status: 0,
 			},
@@ -76,7 +74,7 @@ func TestConvertUser(t *testing.T) {
 				UserId:        ptrStr("user001"),
 				DepartmentIds: nil,
 			},
-			want: domain.User{
+			want: User{
 				UserID: "user001",
 			},
 		},
@@ -111,12 +109,12 @@ func TestConvertDepartment(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larkcontact.Department
-		want  domain.Department
+		want  Department
 	}{
 		{
 			name:  "nil department",
 			input: nil,
-			want:  domain.Department{},
+			want:  Department{},
 		},
 		{
 			name: "all fields active",
@@ -128,7 +126,7 @@ func TestConvertDepartment(t *testing.T) {
 				MemberCount:        ptrInt(10),
 				Status:             &larkcontact.DepartmentStatus{IsDeleted: ptrBool(false)},
 			},
-			want: domain.Department{
+			want: Department{
 				DepartmentID: "dept001",
 				Name:         "技术部",
 				ParentID:     "dept000",
@@ -143,7 +141,7 @@ func TestConvertDepartment(t *testing.T) {
 				DepartmentId: ptrStr("dept002"),
 				Status:       &larkcontact.DepartmentStatus{IsDeleted: ptrBool(true)},
 			},
-			want: domain.Department{
+			want: Department{
 				DepartmentID: "dept002",
 				Status:       1,
 			},
@@ -154,7 +152,7 @@ func TestConvertDepartment(t *testing.T) {
 				DepartmentId: ptrStr("dept003"),
 				Status:       nil,
 			},
-			want: domain.Department{
+			want: Department{
 				DepartmentID: "dept003",
 				Status:       0,
 			},

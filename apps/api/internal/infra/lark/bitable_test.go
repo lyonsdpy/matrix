@@ -4,20 +4,18 @@ import (
 	"testing"
 
 	larkbitable "github.com/larksuite/oapi-sdk-go/v3/service/bitable/v1"
-
-	domain "matrix/api/domain/lark"
 )
 
 func TestChunkRecords(t *testing.T) {
 	tests := []struct {
 		name       string
-		input      []domain.BitableRecord
+		input      []BitableRecord
 		chunkSize  int
 		wantChunks int
 	}{
 		{
 			name:       "empty slice",
-			input:      []domain.BitableRecord{},
+			input:      []BitableRecord{},
 			chunkSize:  1000,
 			wantChunks: 0,
 		},
@@ -78,12 +76,12 @@ func TestConvertBitableRecord(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larkbitable.AppTableRecord
-		want  domain.BitableRecord
+		want  BitableRecord
 	}{
 		{
 			name:  "nil record",
 			input: nil,
-			want:  domain.BitableRecord{},
+			want:  BitableRecord{},
 		},
 		{
 			name: "record with fields",
@@ -94,7 +92,7 @@ func TestConvertBitableRecord(t *testing.T) {
 					"年龄": float64(30),
 				},
 			},
-			want: domain.BitableRecord{
+			want: BitableRecord{
 				RecordID: "rec001",
 				Fields: map[string]interface{}{
 					"姓名": "张三",
@@ -109,7 +107,7 @@ func TestConvertBitableRecord(t *testing.T) {
 					"key": "value",
 				},
 			},
-			want: domain.BitableRecord{
+			want: BitableRecord{
 				RecordID: "",
 				Fields: map[string]interface{}{
 					"key": "value",
@@ -135,12 +133,12 @@ func TestConvertBitableField(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larkbitable.AppTableFieldForList
-		want  domain.BitableField
+		want  BitableField
 	}{
 		{
 			name:  "nil field",
 			input: nil,
-			want:  domain.BitableField{},
+			want:  BitableField{},
 		},
 		{
 			name: "all fields",
@@ -149,7 +147,7 @@ func TestConvertBitableField(t *testing.T) {
 				FieldName: ptrStr("姓名"),
 				Type:      ptrInt(1),
 			},
-			want: domain.BitableField{
+			want: BitableField{
 				FieldID:   "fld001",
 				FieldName: "姓名",
 				FieldType: 1,
@@ -174,10 +172,10 @@ func TestConvertBitableField(t *testing.T) {
 }
 
 // makeRecords 生成指定数量的测试记录。
-func makeRecords(n int) []domain.BitableRecord {
-	records := make([]domain.BitableRecord, n)
+func makeRecords(n int) []BitableRecord {
+	records := make([]BitableRecord, n)
 	for i := range records {
-		records[i] = domain.BitableRecord{
+		records[i] = BitableRecord{
 			Fields: map[string]interface{}{"index": i},
 		}
 	}

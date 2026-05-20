@@ -10,62 +10,60 @@ import (
 	larksecurity "github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v2"
 	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 	"go.uber.org/zap"
-
-	domain "matrix/api/domain/lark"
 )
 
 // --- Mock handlers ---
 
 type mockContactHandler struct {
-	lastUserCreated *domain.User
-	lastUserDeleted *domain.User
-	lastUserUpdated *domain.User
-	lastDeptCreated *domain.Department
-	lastDeptDeleted *domain.Department
-	lastDeptUpdated *domain.Department
+	lastUserCreated *User
+	lastUserDeleted *User
+	lastUserUpdated *User
+	lastDeptCreated *Department
+	lastDeptDeleted *Department
+	lastDeptUpdated *Department
 }
 
-func (m *mockContactHandler) OnUserCreated(_ context.Context, u *domain.User) error {
+func (m *mockContactHandler) OnUserCreated(_ context.Context, u *User) error {
 	m.lastUserCreated = u
 	return nil
 }
-func (m *mockContactHandler) OnUserDeleted(_ context.Context, u *domain.User) error {
+func (m *mockContactHandler) OnUserDeleted(_ context.Context, u *User) error {
 	m.lastUserDeleted = u
 	return nil
 }
-func (m *mockContactHandler) OnUserUpdated(_ context.Context, u *domain.User) error {
+func (m *mockContactHandler) OnUserUpdated(_ context.Context, u *User) error {
 	m.lastUserUpdated = u
 	return nil
 }
-func (m *mockContactHandler) OnDeptCreated(_ context.Context, d *domain.Department) error {
+func (m *mockContactHandler) OnDeptCreated(_ context.Context, d *Department) error {
 	m.lastDeptCreated = d
 	return nil
 }
-func (m *mockContactHandler) OnDeptDeleted(_ context.Context, d *domain.Department) error {
+func (m *mockContactHandler) OnDeptDeleted(_ context.Context, d *Department) error {
 	m.lastDeptDeleted = d
 	return nil
 }
-func (m *mockContactHandler) OnDeptUpdated(_ context.Context, d *domain.Department) error {
+func (m *mockContactHandler) OnDeptUpdated(_ context.Context, d *Department) error {
 	m.lastDeptUpdated = d
 	return nil
 }
 
 type mockDeviceHandler struct {
-	lastDevice *domain.Device
+	lastDevice *Device
 }
 
-func (m *mockDeviceHandler) OnDeviceChanged(_ context.Context, d *domain.Device) error {
+func (m *mockDeviceHandler) OnDeviceChanged(_ context.Context, d *Device) error {
 	m.lastDevice = d
 	return nil
 }
 
 type mockMessageHandler struct {
-	lastMessage *domain.Message
+	lastMessage *Message
 	lastUserID  string
 	lastChatID  string
 }
 
-func (m *mockMessageHandler) OnMessageReceived(_ context.Context, msg *domain.Message) error {
+func (m *mockMessageHandler) OnMessageReceived(_ context.Context, msg *Message) error {
 	m.lastMessage = msg
 	return nil
 }
@@ -86,12 +84,12 @@ func TestEventDispatcherConvertUserEvent(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larkcontact.UserEvent
-		want  domain.User
+		want  User
 	}{
 		{
 			name:  "nil input",
 			input: nil,
-			want:  domain.User{},
+			want:  User{},
 		},
 		{
 			name: "full user activated",
@@ -103,7 +101,7 @@ func TestEventDispatcherConvertUserEvent(t *testing.T) {
 				DepartmentIds: []string{"dept1", "dept2"},
 				Status:        &larkcontact.UserStatus{IsActivated: ptrBool(true)},
 			},
-			want: domain.User{
+			want: User{
 				UserID:        "uid123",
 				Name:          "张三",
 				Email:         "zs@example.com",
@@ -118,7 +116,7 @@ func TestEventDispatcherConvertUserEvent(t *testing.T) {
 				UserId: ptrStr("uid456"),
 				Status: &larkcontact.UserStatus{IsFrozen: ptrBool(true)},
 			},
-			want: domain.User{UserID: "uid456", Status: 2},
+			want: User{UserID: "uid456", Status: 2},
 		},
 		{
 			name: "unjoin user",
@@ -126,14 +124,14 @@ func TestEventDispatcherConvertUserEvent(t *testing.T) {
 				UserId: ptrStr("uid789"),
 				Status: &larkcontact.UserStatus{IsUnjoin: ptrBool(true)},
 			},
-			want: domain.User{UserID: "uid789", Status: 4},
+			want: User{UserID: "uid789", Status: 4},
 		},
 		{
 			name: "nil status",
 			input: &larkcontact.UserEvent{
 				UserId: ptrStr("uid000"),
 			},
-			want: domain.User{UserID: "uid000", Status: 0},
+			want: User{UserID: "uid000", Status: 0},
 		},
 	}
 
@@ -166,12 +164,12 @@ func TestEventDispatcherConvertDepartmentEvent(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larkcontact.DepartmentEvent
-		want  domain.Department
+		want  Department
 	}{
 		{
 			name:  "nil input",
 			input: nil,
-			want:  domain.Department{},
+			want:  Department{},
 		},
 		{
 			name: "all fields active",
@@ -182,7 +180,7 @@ func TestEventDispatcherConvertDepartmentEvent(t *testing.T) {
 				LeaderUserId:       ptrStr("user_lead"),
 				Status:             &larkcontact.DepartmentStatus{IsDeleted: ptrBool(false)},
 			},
-			want: domain.Department{
+			want: Department{
 				DepartmentID: "dept001",
 				Name:         "技术部",
 				ParentID:     "dept000",
@@ -197,14 +195,14 @@ func TestEventDispatcherConvertDepartmentEvent(t *testing.T) {
 				DepartmentId: ptrStr("dept002"),
 				Status:       &larkcontact.DepartmentStatus{IsDeleted: ptrBool(true)},
 			},
-			want: domain.Department{DepartmentID: "dept002", Status: 1},
+			want: Department{DepartmentID: "dept002", Status: 1},
 		},
 		{
 			name: "nil status",
 			input: &larkcontact.DepartmentEvent{
 				DepartmentId: ptrStr("dept003"),
 			},
-			want: domain.Department{DepartmentID: "dept003", Status: 0},
+			want: Department{DepartmentID: "dept003", Status: 0},
 		},
 	}
 
@@ -234,12 +232,12 @@ func TestEventDispatcherConvertDeviceChangeEvent(t *testing.T) {
 	tests := []struct {
 		name  string
 		input *larksecurity.DeviceChangeEvent
-		want  domain.Device
+		want  Device
 	}{
 		{
 			name:  "nil input",
 			input: nil,
-			want:  domain.Device{},
+			want:  Device{},
 		},
 		{
 			name: "all fields",
@@ -252,7 +250,7 @@ func TestEventDispatcherConvertDeviceChangeEvent(t *testing.T) {
 				DeviceStatus:    ptrInt(3),
 				SerialNumber:    ptrStr("SN001"),
 			},
-			want: domain.Device{
+			want: Device{
 				DeviceID:     "dev001",
 				DeviceName:   "MacBook Pro",
 				Platform:     fmt.Sprintf("%d", 2),
@@ -268,7 +266,7 @@ func TestEventDispatcherConvertDeviceChangeEvent(t *testing.T) {
 				DeviceRecordId: ptrStr("dev002"),
 				CurrentUserId:  nil,
 			},
-			want: domain.Device{DeviceID: "dev002"},
+			want: Device{DeviceID: "dev002"},
 		},
 		{
 			name: "current user id inner nil",
@@ -276,7 +274,7 @@ func TestEventDispatcherConvertDeviceChangeEvent(t *testing.T) {
 				DeviceRecordId: ptrStr("dev003"),
 				CurrentUserId:  &larksecurity.UserId{UserId: nil},
 			},
-			want: domain.Device{DeviceID: "dev003"},
+			want: Device{DeviceID: "dev003"},
 		},
 	}
 
@@ -313,12 +311,12 @@ func TestEventDispatcherConvertEventMessage(t *testing.T) {
 		name   string
 		msg    *larkim.EventMessage
 		sender *larkim.EventSender
-		want   domain.Message
+		want   Message
 	}{
 		{
 			name: "nil message",
 			msg:  nil,
-			want: domain.Message{},
+			want: Message{},
 		},
 		{
 			name: "full message with sender",
@@ -333,7 +331,7 @@ func TestEventDispatcherConvertEventMessage(t *testing.T) {
 			sender: &larkim.EventSender{
 				SenderId: &larkim.UserId{UserId: ptrStr("sender001")},
 			},
-			want: domain.Message{
+			want: Message{
 				MessageID:  "msg001",
 				ChatID:     "chat001",
 				ChatType:   "p2p",
@@ -349,7 +347,7 @@ func TestEventDispatcherConvertEventMessage(t *testing.T) {
 				MessageId: ptrStr("msg002"),
 			},
 			sender: nil,
-			want:   domain.Message{MessageID: "msg002"},
+			want:   Message{MessageID: "msg002"},
 		},
 		{
 			name: "sender with nil user id",
@@ -359,7 +357,7 @@ func TestEventDispatcherConvertEventMessage(t *testing.T) {
 			sender: &larkim.EventSender{
 				SenderId: &larkim.UserId{UserId: nil},
 			},
-			want: domain.Message{MessageID: "msg003"},
+			want: Message{MessageID: "msg003"},
 		},
 	}
 
@@ -588,10 +586,10 @@ func TestEventDispatcherHandleBotChatEntered(t *testing.T) {
 
 // mockMenuHandler 实现 domain.MenuEventHandler，记录调用供断言。
 type mockMenuHandler struct {
-	lastEvent *domain.BotMenuEvent
+	lastEvent *BotMenuEvent
 }
 
-func (m *mockMenuHandler) OnBotMenuClicked(_ context.Context, event *domain.BotMenuEvent) error {
+func (m *mockMenuHandler) OnBotMenuClicked(_ context.Context, event *BotMenuEvent) error {
 	m.lastEvent = event
 	return nil
 }
@@ -632,8 +630,8 @@ func TestEventDispatcher_OnBotMenuV6_Dispatches(t *testing.T) {
 	if handler.lastEvent.OpenID != "open-abc" {
 		t.Errorf("OpenID = %q, want %q", handler.lastEvent.OpenID, "open-abc")
 	}
-	if handler.lastEvent.Type != domain.EventBotMenu {
-		t.Errorf("Type = %q, want %q", handler.lastEvent.Type, domain.EventBotMenu)
+	if handler.lastEvent.Type != EventBotMenu {
+		t.Errorf("Type = %q, want %q", handler.lastEvent.Type, EventBotMenu)
 	}
 }
 

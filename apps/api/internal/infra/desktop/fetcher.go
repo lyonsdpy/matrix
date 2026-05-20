@@ -8,12 +8,23 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
-
-	"matrix/api/domain/aisdesk"
 )
 
-// 编译期断言：deviceFetcher 实现了 desktop.DeviceFetcher 接口。
-var _ aisdesk.DeviceFetcher = (*deviceFetcher)(nil)
+// DeviceFetcher 亚信桌面管理设备数据读取能力。
+// 所有方法均为只读操作，仅返回安装了 Agent 的设备（TDevice.AgentInstalled=1）。
+type DeviceFetcher interface {
+	// ListDevices 返回所有安装了 Agent 的设备基础信息（TDevice + TComputer）。
+	ListDevices(ctx context.Context) ([]Device, error)
+
+	// ListInstalledSoftware 返回指定设备的已安装软件列表（AgentInstalled=1 过滤由 ListDevices 保证，此处按 deviceID 查询）。
+	ListInstalledSoftware(ctx context.Context, deviceID int) ([]InstalledSoftware, error)
+
+	// ListHardwareComponents 返回指定设备的硬件组件详情列表（AgentInstalled=1 过滤由 ListDevices 保证，此处按 deviceID 查询）。
+	ListHardwareComponents(ctx context.Context, deviceID int) ([]HardwareComponent, error)
+}
+
+// 编译期断言：deviceFetcher 实现了 DeviceFetcher 接口。
+var _ DeviceFetcher = (*deviceFetcher)(nil)
 
 // deviceFetcher 使用 sqlx 从桌面管理 MySQL 数据库读取设备信息。
 type deviceFetcher struct {
@@ -22,7 +33,7 @@ type deviceFetcher struct {
 }
 
 // NewDeviceFetcher 创建 DeviceFetcher 实现，持有只读数据库连接和结构化日志器。
-func NewDeviceFetcher(db *sqlx.DB, logger *zap.Logger) aisdesk.DeviceFetcher {
+func NewDeviceFetcher(db *sqlx.DB, logger *zap.Logger) DeviceFetcher {
 	return &deviceFetcher{db: db, logger: logger}
 }
 
@@ -119,13 +130,13 @@ WHERE hr.DeviceID = ?
 ORDER BY hi.Type, hi.Name`
 
 // ListDevices 返回所有安装了 Agent 的设备基础信息（TDevice + TComputer LEFT JOIN）。
-func (f *deviceFetcher) ListDevices(ctx context.Context) ([]aisdesk.Device, error) {
+func (f *deviceFetcher) ListDevices(ctx context.Context) ([]Device, error) {
 	var rows []deviceRow
 	if err := f.db.SelectContext(ctx, &rows, listDevicesSQL); err != nil {
 		return nil, fmt.Errorf("desktop: ListDevices query: %w", err)
 	}
 
-	devices := make([]aisdesk.Device, 0, len(rows))
+	devices := make([]Device, 0, len(rows))
 	for _, r := range rows {
 		devices = append(devices, toDevice(r))
 	}
@@ -133,14 +144,14 @@ func (f *deviceFetcher) ListDevices(ctx context.Context) ([]aisdesk.Device, erro
 }
 
 // ListInstalledSoftware 返回指定设备的已安装软件列表。
-func (f *deviceFetcher) ListInstalledSoftware(ctx context.Context, deviceID int) ([]aisdesk.InstalledSoftware, error) {
+func (f *deviceFetcher) ListInstalledSoftware(ctx context.Context, deviceID int) ([]InstalledSoftware, error) {
 	var rows []softwareRow
 	if err := f.db.SelectContext(ctx, &rows, listInstalledSoftwareSQL, deviceID); err != nil {
 		return nil, fmt.Errorf("desktop: ListInstalledSoftware(deviceID=%d) query: %w", deviceID,
 			err)
 	}
 
-	result := make([]aisdesk.InstalledSoftware, 0, len(rows))
+	result := make([]InstalledSoftware, 0, len(rows))
 	for _, r := range rows {
 		result = append(result, toInstalledSoftware(r))
 	}
@@ -148,14 +159,14 @@ func (f *deviceFetcher) ListInstalledSoftware(ctx context.Context, deviceID int)
 }
 
 // ListHardwareComponents 返回指定设备的硬件组件详情列表。
-func (f *deviceFetcher) ListHardwareComponents(ctx context.Context, deviceID int) ([]aisdesk.HardwareComponent, error) {
+func (f *deviceFetcher) ListHardwareComponents(ctx context.Context, deviceID int) ([]HardwareComponent, error) {
 	var rows []hardwareRow
 	if err := f.db.SelectContext(ctx, &rows, listHardwareComponentsSQL, deviceID); err != nil {
 		return nil, fmt.Errorf("desktop: ListHardwareComponents(deviceID=%d) query: %w", deviceID,
 			err)
 	}
 
-	result := make([]aisdesk.HardwareComponent, 0, len(rows))
+	result := make([]HardwareComponent, 0, len(rows))
 	for _, r := range rows {
 		result = append(result, toHardwareComponent(r))
 	}
@@ -164,12 +175,12 @@ func (f *deviceFetcher) ListHardwareComponents(ctx context.Context, deviceID int
 
 // toDevice 将 deviceRow 转换为领域模型 Device。
 // LastTime 为 sql.NullTime，NULL 时映射为 time.Time 零值。
-func toDevice(r deviceRow) aisdesk.Device {
+func toDevice(r deviceRow) Device {
 	var lastTime time.Time
 	if r.LastTime.Valid {
 		lastTime = r.LastTime.Time
 	}
-	return aisdesk.Device{
+	return Device{
 		DeviceID:     r.DeviceID,
 		IP:           r.IP,
 		AllIP:        r.AllIP,
@@ -192,8 +203,8 @@ func toDevice(r deviceRow) aisdesk.Device {
 }
 
 // toInstalledSoftware 将 softwareRow 转换为领域模型 InstalledSoftware。
-func toInstalledSoftware(r softwareRow) aisdesk.InstalledSoftware {
-	return aisdesk.InstalledSoftware{
+func toInstalledSoftware(r softwareRow) InstalledSoftware {
+	return InstalledSoftware{
 		DeviceID:    r.DeviceID,
 		DisplayName: r.DisplayName,
 		Version:     r.Version,
@@ -204,8 +215,8 @@ func toInstalledSoftware(r softwareRow) aisdesk.InstalledSoftware {
 }
 
 // toHardwareComponent 将 hardwareRow 转换为领域模型 HardwareComponent。
-func toHardwareComponent(r hardwareRow) aisdesk.HardwareComponent {
-	return aisdesk.HardwareComponent{
+func toHardwareComponent(r hardwareRow) HardwareComponent {
+	return HardwareComponent{
 		DeviceID: r.DeviceID,
 		Name:     r.Name,
 		Type:     r.Type,

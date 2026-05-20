@@ -7,7 +7,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"matrix/api/domain/queue"
+	"matrix/api/internal/infra/queue"
 )
 
 // compile-time interface check

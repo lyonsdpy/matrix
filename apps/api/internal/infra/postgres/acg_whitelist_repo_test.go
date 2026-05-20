@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"matrix/api/domain/aisacg"
+	"matrix/api/internal/infra/aisacg"
 )
 
 func TestACGWhitelistRepo_ReplaceByDevice(t *testing.T) {

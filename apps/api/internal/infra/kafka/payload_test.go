@@ -1,13 +1,13 @@
-package message_test
+package kafka_test
 
 import (
 	"encoding/json"
 	"testing"
 	"time"
 
-	"matrix/api/domain/aisacg"
-	"matrix/api/domain/aisdesk"
-	"matrix/api/domain/message"
+	"matrix/api/internal/infra/aisacg"
+	desktop "matrix/api/internal/infra/desktop"
+	kafka "matrix/api/internal/infra/kafka"
 )
 
 // TestNewPayloadsJSONRoundTrip 验证 5 个新 Payload struct 的 JSON 序列化/反序列化一致性。
@@ -21,26 +21,26 @@ func TestNewPayloadsJSONRoundTrip(t *testing.T) {
 	}{
 		{
 			name: "DesktopDeviceSyncPayload",
-			payload: message.DesktopDeviceSyncPayload{
-				Devices: []aisdesk.Device{
+			payload: kafka.DesktopDeviceSyncPayload{
+				Devices: []desktop.Device{
 					{
 						DeviceID:   1,
 						IP:         "192.168.1.10",
 						DevName:    "PC-001",
-						DeviceType: aisdesk.DeviceTypeWindowsPC,
+						DeviceType: desktop.DeviceTypeWindowsPC,
 						Online:     true,
 						LastTime:   time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC),
 					},
 				},
 			},
-			target: func() any { return &message.DesktopDeviceSyncPayload{} },
+			target: func() any { return &kafka.DesktopDeviceSyncPayload{} },
 		},
 		{
 			name: "DesktopSoftwareSyncPayload",
-			payload: message.DesktopSoftwareSyncPayload{
+			payload: kafka.DesktopSoftwareSyncPayload{
 				DeviceID:   1,
 				DeviceName: "PC-001",
-				Softwares: []aisdesk.InstalledSoftware{
+				Softwares: []desktop.InstalledSoftware{
 					{
 						DeviceID:    1,
 						DisplayName: "Go 1.25",
@@ -49,13 +49,13 @@ func TestNewPayloadsJSONRoundTrip(t *testing.T) {
 					},
 				},
 			},
-			target: func() any { return &message.DesktopSoftwareSyncPayload{} },
+			target: func() any { return &kafka.DesktopSoftwareSyncPayload{} },
 		},
 		{
 			name: "DesktopHardwareSyncPayload",
-			payload: message.DesktopHardwareSyncPayload{
+			payload: kafka.DesktopHardwareSyncPayload{
 				DeviceID: 1,
-				Components: []aisdesk.HardwareComponent{
+				Components: []desktop.HardwareComponent{
 					{
 						DeviceID: 1,
 						Name:     "Intel Core i7-12700",
@@ -63,11 +63,11 @@ func TestNewPayloadsJSONRoundTrip(t *testing.T) {
 					},
 				},
 			},
-			target: func() any { return &message.DesktopHardwareSyncPayload{} },
+			target: func() any { return &kafka.DesktopHardwareSyncPayload{} },
 		},
 		{
 			name: "ACGWhitelistSyncPayload",
-			payload: message.ACGWhitelistSyncPayload{
+			payload: kafka.ACGWhitelistSyncPayload{
 				ACGDevice: "acg-01",
 				Entries: []aisacg.WhitelistEntry{
 					{
@@ -78,11 +78,11 @@ func TestNewPayloadsJSONRoundTrip(t *testing.T) {
 					},
 				},
 			},
-			target: func() any { return &message.ACGWhitelistSyncPayload{} },
+			target: func() any { return &kafka.ACGWhitelistSyncPayload{} },
 		},
 		{
 			name: "ACGUserSyncPayload",
-			payload: message.ACGUserSyncPayload{
+			payload: kafka.ACGUserSyncPayload{
 				ACGDevice: "acg-01",
 				Users: []aisacg.User{
 					{
@@ -92,7 +92,7 @@ func TestNewPayloadsJSONRoundTrip(t *testing.T) {
 					},
 				},
 			},
-			target: func() any { return &message.ACGUserSyncPayload{} },
+			target: func() any { return &kafka.ACGUserSyncPayload{} },
 		},
 	}
 

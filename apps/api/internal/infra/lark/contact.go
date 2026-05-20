@@ -8,33 +8,49 @@ import (
 
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	"go.uber.org/zap"
-
-	domain "matrix/api/domain/lark"
 )
+
+// ContactFetcher 通讯录全量拉取能力。
+type ContactFetcher interface {
+	// FetchAllDepartments 从根部门递归获取所有部门。
+	FetchAllDepartments(ctx context.Context) ([]Department, error)
+
+	// FetchDepartmentUsers 获取指定部门的直属用户列表（分页全量）。
+	FetchDepartmentUsers(ctx context.Context, departmentID string) ([]User, error)
+
+	// FetchAllUsers 递归获取所有部门下的所有用户（去重）。
+	FetchAllUsers(ctx context.Context) ([]User, error)
+
+	// GetUser 获取单个用户详情。
+	GetUser(ctx context.Context, userID string) (*User, error)
+
+	// GetDepartment 获取单个部门详情。
+	GetDepartment(ctx context.Context, departmentID string) (*Department, error)
+}
 
 // larkRateLimit 飞书 API 调用间隔，避免触发 code=99991400 频率限制。
 // 飞书企业版通讯录 API 限速约 100 QPS；150ms 约 6.7 QPS，安全边际充足。
 const larkRateLimit = 150 * time.Millisecond
 
-// contactFetcher 实现 domain.ContactFetcher。
+// contactFetcher 实现 ContactFetcher。
 type contactFetcher struct {
 	client *Client
 	logger *zap.Logger
 }
 
 // compile-time interface check
-var _ domain.ContactFetcher = (*contactFetcher)(nil)
+var _ ContactFetcher = (*contactFetcher)(nil)
 
 // NewContactFetcher 创建通讯录拉取器。
-func NewContactFetcher(client *Client, logger *zap.Logger) domain.ContactFetcher {
+func NewContactFetcher(client *Client, logger *zap.Logger) ContactFetcher {
 	return &contactFetcher{client: client, logger: logger}
 }
 
 // FetchAllDepartments 从根部门递归获取所有部门（BFS）。
 // 每次 API 调用之间等待 larkRateLimit，避免触发飞书频率限制。
 // 单个部门子节点拉取失败时 warn+continue，不中断整体遍历。
-func (f *contactFetcher) FetchAllDepartments(ctx context.Context) ([]domain.Department, error) {
-	var result []domain.Department
+func (f *contactFetcher) FetchAllDepartments(ctx context.Context) ([]Department, error) {
+	var result []Department
 	queue := []string{"0"} // 从根部门 "0" 开始
 
 	for len(queue) > 0 {
@@ -94,8 +110,8 @@ func (f *contactFetcher) FetchAllDepartments(ctx context.Context) ([]domain.Depa
 }
 
 // FetchDepartmentUsers 获取指定部门的直属用户列表（分页全量）。
-func (f *contactFetcher) FetchDepartmentUsers(ctx context.Context, departmentID string) ([]domain.User, error) {
-	var result []domain.User
+func (f *contactFetcher) FetchDepartmentUsers(ctx context.Context, departmentID string) ([]User, error) {
+	var result []User
 	var pageToken string
 
 	for {
@@ -138,14 +154,14 @@ func (f *contactFetcher) FetchDepartmentUsers(ctx context.Context, departmentID 
 // FetchAllUsers 遍历所有部门，逐部门拉取直属用户并去重，返回全公司用户列表。
 // SDK v3.5.3 的 FindByDepartmentUserReqBuilder 不支持递归模式（fetch_user_type=2），
 // 因此通过先 FetchAllDepartments 再逐部门请求来保证全量获取。
-func (f *contactFetcher) FetchAllUsers(ctx context.Context) ([]domain.User, error) {
+func (f *contactFetcher) FetchAllUsers(ctx context.Context) ([]User, error) {
 	depts, err := f.FetchAllDepartments(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("contact: fetch all users, list depts: %w", err)
 	}
 
 	seen := make(map[string]struct{}, len(depts)*10)
-	var result []domain.User
+	var result []User
 
 	for _, dept := range depts {
 		deptUsers, err := f.FetchDepartmentUsers(ctx, dept.DepartmentID)
@@ -167,7 +183,7 @@ func (f *contactFetcher) FetchAllUsers(ctx context.Context) ([]domain.User, erro
 }
 
 // GetUser 获取单个用户详情。
-func (f *contactFetcher) GetUser(ctx context.Context, userID string) (*domain.User, error) {
+func (f *contactFetcher) GetUser(ctx context.Context, userID string) (*User, error) {
 	req := larkcontact.NewGetUserReqBuilder().
 		UserId(userID).
 		UserIdType("user_id").
@@ -190,7 +206,7 @@ func (f *contactFetcher) GetUser(ctx context.Context, userID string) (*domain.Us
 }
 
 // GetDepartment 获取单个部门详情。
-func (f *contactFetcher) GetDepartment(ctx context.Context, departmentID string) (*domain.Department, error) {
+func (f *contactFetcher) GetDepartment(ctx context.Context, departmentID string) (*Department, error) {
 	req := larkcontact.NewGetDepartmentReqBuilder().
 		DepartmentId(departmentID).
 		UserIdType("user_id").
@@ -212,12 +228,12 @@ func (f *contactFetcher) GetDepartment(ctx context.Context, departmentID string)
 	return &d, nil
 }
 
-// convertUser 将 SDK User 转换为 domain.User。
-func convertUser(u *larkcontact.User) domain.User {
+// convertUser 将 SDK User 转换为 User。
+func convertUser(u *larkcontact.User) User {
 	if u == nil {
-		return domain.User{}
+		return User{}
 	}
-	user := domain.User{
+	user := User{
 		DepartmentIDs: u.DepartmentIds,
 	}
 	if u.UserId != nil {
@@ -236,12 +252,12 @@ func convertUser(u *larkcontact.User) domain.User {
 	return user
 }
 
-// convertDepartment 将 SDK Department 转换为 domain.Department。
-func convertDepartment(d *larkcontact.Department) domain.Department {
+// convertDepartment 将 SDK Department 转换为 Department。
+func convertDepartment(d *larkcontact.Department) Department {
 	if d == nil {
-		return domain.Department{}
+		return Department{}
 	}
-	dept := domain.Department{}
+	dept := Department{}
 	if d.DepartmentId != nil {
 		dept.DepartmentID = *d.DepartmentId
 	}

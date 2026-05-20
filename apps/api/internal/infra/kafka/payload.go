@@ -1,9 +1,9 @@
-package message
+package kafka
 
 import (
-	"matrix/api/domain/aisacg"
-	"matrix/api/domain/aisdesk"
-	"matrix/api/domain/lark"
+	"matrix/api/internal/infra/aisacg"
+	desktop "matrix/api/internal/infra/desktop"
+	"matrix/api/internal/infra/lark"
 )
 
 // OrgSyncPayload 组织架构同步载荷。
@@ -61,20 +61,20 @@ type BotMenuPayload struct {
 
 // DesktopDeviceSyncPayload 桌面管理设备全量同步载荷。
 type DesktopDeviceSyncPayload struct {
-	Devices []aisdesk.Device `json:"devices"`
+	Devices []desktop.Device `json:"devices"`
 }
 
 // DesktopSoftwareSyncPayload 单台终端已安装软件同步载荷。
 type DesktopSoftwareSyncPayload struct {
-	DeviceID   int                         `json:"device_id"`
-	DeviceName string                      `json:"device_name"`
-	Softwares  []aisdesk.InstalledSoftware `json:"softwares"`
+	DeviceID   int                      `json:"device_id"`
+	DeviceName string                   `json:"device_name"`
+	Softwares  []desktop.InstalledSoftware `json:"softwares"`
 }
 
 // DesktopHardwareSyncPayload 单台终端硬件组件同步载荷。
 type DesktopHardwareSyncPayload struct {
-	DeviceID   int                         `json:"device_id"`
-	Components []aisdesk.HardwareComponent `json:"components"`
+	DeviceID   int                        `json:"device_id"`
+	Components []desktop.HardwareComponent `json:"components"`
 }
 
 // ACGWhitelistSyncPayload ACG 设备全局白名单同步载荷。
@@ -85,6 +85,6 @@ type ACGWhitelistSyncPayload struct {
 
 // ACGUserSyncPayload ACG 设备用户同步载荷。
 type ACGUserSyncPayload struct {
-	ACGDevice string        `json:"acg_device"`
+	ACGDevice string       `json:"acg_device"`
 	Users     []aisacg.User `json:"users"`
 }

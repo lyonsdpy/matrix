@@ -7,29 +7,68 @@ import (
 
 	larkbitable "github.com/larksuite/oapi-sdk-go/v3/service/bitable/v1"
 	"go.uber.org/zap"
-
-	domain "matrix/api/domain/lark"
 )
+
+// BitableRecord 多维表格记录。
+type BitableRecord struct {
+	RecordID string                 // 记录 ID（新增时为空）
+	Fields   map[string]interface{} // 字段名 → 值
+}
+
+// BitableField 多维表格字段定义。
+type BitableField struct {
+	FieldID   string // 字段 ID
+	FieldName string // 字段名
+	FieldType int    // 字段类型
+}
+
+// BitableTable 多维表格中的数据表。
+type BitableTable struct {
+	TableID string // 数据表 ID
+	Name    string // 数据表名称
+}
+
+// BitableOperator 多维表格通用操作能力。
+type BitableOperator interface {
+	// ListTables 列出多维表格中的所有数据表。
+	ListTables(ctx context.Context, appToken string) ([]BitableTable, error)
+
+	// ListFields 获取数据表的字段定义。
+	ListFields(ctx context.Context, appToken string, tableID string) ([]BitableField, error)
+
+	// SearchRecords 查询记录（支持筛选）。
+	// filter 为飞书筛选表达式，为空则不筛选。
+	SearchRecords(ctx context.Context, appToken string, tableID string, filter string) ([]BitableRecord, error)
+
+	// BatchCreateRecords 批量新增记录（单次最多 1000 条）。
+	BatchCreateRecords(ctx context.Context, appToken string, tableID string, records []BitableRecord) ([]BitableRecord, error)
+
+	// BatchUpdateRecords 批量更新记录（单次最多 1000 条）。
+	BatchUpdateRecords(ctx context.Context, appToken string, tableID string, records []BitableRecord) ([]BitableRecord, error)
+
+	// BatchDeleteRecords 批量删除记录。
+	BatchDeleteRecords(ctx context.Context, appToken string, tableID string, recordIDs []string) error
+}
 
 const bitableMaxBatchSize = 1000
 
-// bitableOperator 实现 domain.BitableOperator。
+// bitableOperator 实现 BitableOperator。
 type bitableOperator struct {
 	client *Client
 	logger *zap.Logger
 }
 
 // compile-time interface check
-var _ domain.BitableOperator = (*bitableOperator)(nil)
+var _ BitableOperator = (*bitableOperator)(nil)
 
 // NewBitableOperator 创建多维表格操作器。
-func NewBitableOperator(client *Client, logger *zap.Logger) domain.BitableOperator {
+func NewBitableOperator(client *Client, logger *zap.Logger) BitableOperator {
 	return &bitableOperator{client: client, logger: logger}
 }
 
 // ListTables 列出多维表格中的所有数据表。
-func (b *bitableOperator) ListTables(ctx context.Context, appToken string) ([]domain.BitableTable, error) {
-	var result []domain.BitableTable
+func (b *bitableOperator) ListTables(ctx context.Context, appToken string) ([]BitableTable, error) {
+	var result []BitableTable
 	var pageToken string
 
 	for {
@@ -66,8 +105,8 @@ func (b *bitableOperator) ListTables(ctx context.Context, appToken string) ([]do
 }
 
 // ListFields 获取数据表的字段定义。
-func (b *bitableOperator) ListFields(ctx context.Context, appToken string, tableID string) ([]domain.BitableField, error) {
-	var result []domain.BitableField
+func (b *bitableOperator) ListFields(ctx context.Context, appToken string, tableID string) ([]BitableField, error) {
+	var result []BitableField
 	var pageToken string
 
 	for {
@@ -105,8 +144,8 @@ func (b *bitableOperator) ListFields(ctx context.Context, appToken string, table
 }
 
 // SearchRecords 查询记录（支持筛选），处理分页。
-func (b *bitableOperator) SearchRecords(ctx context.Context, appToken string, tableID string, filter string) ([]domain.BitableRecord, error) {
-	var result []domain.BitableRecord
+func (b *bitableOperator) SearchRecords(ctx context.Context, appToken string, tableID string, filter string) ([]BitableRecord, error) {
+	var result []BitableRecord
 	var pageToken string
 
 	for {
@@ -148,9 +187,9 @@ func (b *bitableOperator) SearchRecords(ctx context.Context, appToken string, ta
 }
 
 // BatchCreateRecords 批量新增记录（超过 1000 条自动分批）。
-func (b *bitableOperator) BatchCreateRecords(ctx context.Context, appToken string, tableID string, records []domain.BitableRecord) ([]domain.BitableRecord, error) {
+func (b *bitableOperator) BatchCreateRecords(ctx context.Context, appToken string, tableID string, records []BitableRecord) ([]BitableRecord, error) {
 	chunks := chunkRecords(records, bitableMaxBatchSize)
-	var result []domain.BitableRecord
+	var result []BitableRecord
 
 	for _, chunk := range chunks {
 		sdkRecords := domainToSDKRecords(chunk)
@@ -182,9 +221,9 @@ func (b *bitableOperator) BatchCreateRecords(ctx context.Context, appToken strin
 }
 
 // BatchUpdateRecords 批量更新记录（超过 1000 条自动分批）。
-func (b *bitableOperator) BatchUpdateRecords(ctx context.Context, appToken string, tableID string, records []domain.BitableRecord) ([]domain.BitableRecord, error) {
+func (b *bitableOperator) BatchUpdateRecords(ctx context.Context, appToken string, tableID string, records []BitableRecord) ([]BitableRecord, error) {
 	chunks := chunkRecords(records, bitableMaxBatchSize)
-	var result []domain.BitableRecord
+	var result []BitableRecord
 
 	for _, chunk := range chunks {
 		sdkRecords := domainToSDKRecords(chunk)
@@ -238,11 +277,11 @@ func (b *bitableOperator) BatchDeleteRecords(ctx context.Context, appToken strin
 }
 
 // chunkRecords 将记录切分为指定大小的分片。
-func chunkRecords(records []domain.BitableRecord, size int) [][]domain.BitableRecord {
+func chunkRecords(records []BitableRecord, size int) [][]BitableRecord {
 	if len(records) == 0 {
 		return nil
 	}
-	var chunks [][]domain.BitableRecord
+	var chunks [][]BitableRecord
 	for i := 0; i < len(records); i += size {
 		end := i + size
 		if end > len(records) {
@@ -253,12 +292,12 @@ func chunkRecords(records []domain.BitableRecord, size int) [][]domain.BitableRe
 	return chunks
 }
 
-// convertBitableRecord 将 SDK AppTableRecord 转换为 domain.BitableRecord。
-func convertBitableRecord(r *larkbitable.AppTableRecord) domain.BitableRecord {
+// convertBitableRecord 将 SDK AppTableRecord 转换为 BitableRecord。
+func convertBitableRecord(r *larkbitable.AppTableRecord) BitableRecord {
 	if r == nil {
-		return domain.BitableRecord{}
+		return BitableRecord{}
 	}
-	rec := domain.BitableRecord{
+	rec := BitableRecord{
 		Fields: r.Fields,
 	}
 	if r.RecordId != nil {
@@ -267,12 +306,12 @@ func convertBitableRecord(r *larkbitable.AppTableRecord) domain.BitableRecord {
 	return rec
 }
 
-// convertBitableField 将 SDK AppTableFieldForList 转换为 domain.BitableField。
-func convertBitableField(f *larkbitable.AppTableFieldForList) domain.BitableField {
+// convertBitableField 将 SDK AppTableFieldForList 转换为 BitableField。
+func convertBitableField(f *larkbitable.AppTableFieldForList) BitableField {
 	if f == nil {
-		return domain.BitableField{}
+		return BitableField{}
 	}
-	field := domain.BitableField{}
+	field := BitableField{}
 	if f.FieldId != nil {
 		field.FieldID = *f.FieldId
 	}
@@ -285,12 +324,12 @@ func convertBitableField(f *larkbitable.AppTableFieldForList) domain.BitableFiel
 	return field
 }
 
-// convertBitableTable 将 SDK AppTable 转换为 domain.BitableTable。
-func convertBitableTable(t *larkbitable.AppTable) domain.BitableTable {
+// convertBitableTable 将 SDK AppTable 转换为 BitableTable。
+func convertBitableTable(t *larkbitable.AppTable) BitableTable {
 	if t == nil {
-		return domain.BitableTable{}
+		return BitableTable{}
 	}
-	table := domain.BitableTable{}
+	table := BitableTable{}
 	if t.TableId != nil {
 		table.TableID = *t.TableId
 	}
@@ -300,8 +339,8 @@ func convertBitableTable(t *larkbitable.AppTable) domain.BitableTable {
 	return table
 }
 
-// domainToSDKRecords 将 domain.BitableRecord 切片转换为 SDK AppTableRecord 切片。
-func domainToSDKRecords(records []domain.BitableRecord) []*larkbitable.AppTableRecord {
+// domainToSDKRecords 将 BitableRecord 切片转换为 SDK AppTableRecord 切片。
+func domainToSDKRecords(records []BitableRecord) []*larkbitable.AppTableRecord {
 	result := make([]*larkbitable.AppTableRecord, len(records))
 	for i, r := range records {
 		rec := &larkbitable.AppTableRecord{

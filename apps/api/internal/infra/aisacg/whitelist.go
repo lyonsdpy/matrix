@@ -6,13 +6,26 @@ import (
 	"fmt"
 	"net/http"
 
-	domain "matrix/api/domain/aisacg"
-
 	"go.uber.org/zap"
 )
 
+// WhitelistEntry ACG 全局白名单条目。
+// 只读采集语义：此类型仅用于从 ACG 设备采集数据，不支持本地修改。
+type WhitelistEntry struct {
+	Enable bool     // 是否启用
+	Name   string   // 条目名称
+	Desc   string   // 描述
+	Addrs  []string // 地址列表（IP 或域名）
+}
+
+// WhitelistFetcher 只读采集 ACG 全局白名单。
+type WhitelistFetcher interface {
+	// ListWhitelistEntries 从 ACG 设备采集全局白名单条目列表。
+	ListWhitelistEntries(ctx context.Context) ([]WhitelistEntry, error)
+}
+
 // 编译期 interface 合规检查。
-var _ domain.WhitelistFetcher = (*whitelistFetcher)(nil)
+var _ WhitelistFetcher = (*whitelistFetcher)(nil)
 
 type whitelistFetcher struct {
 	client *Client
@@ -20,7 +33,7 @@ type whitelistFetcher struct {
 }
 
 // NewWhitelistFetcher 构造 WhitelistFetcher 实现。
-func NewWhitelistFetcher(client *Client, logger *zap.Logger) domain.WhitelistFetcher {
+func NewWhitelistFetcher(client *Client, logger *zap.Logger) WhitelistFetcher {
 	return &whitelistFetcher{client: client, logger: logger}
 }
 
@@ -62,7 +75,7 @@ type whitelistItemResp struct {
 
 // ListWhitelistEntries 从 ACG 设备采集全局白名单条目列表（GET /Policies/GlobalWhitelist）。
 // 使用 "/../Policies/GlobalWhitelist" 路径以跨越 baseURL 的 /Objects 前缀。
-func (f *whitelistFetcher) ListWhitelistEntries(ctx context.Context) ([]domain.WhitelistEntry, error) {
+func (f *whitelistFetcher) ListWhitelistEntries(ctx context.Context) ([]WhitelistEntry, error) {
 	data, err := f.client.do(ctx, http.MethodGet, "/../Policies/GlobalWhitelist", nil)
 	if err != nil {
 		return nil, fmt.Errorf("aisacg: ListWhitelistEntries: %w", err)
@@ -71,13 +84,13 @@ func (f *whitelistFetcher) ListWhitelistEntries(ctx context.Context) ([]domain.W
 	if err := json.Unmarshal(data, &items); err != nil {
 		return nil, fmt.Errorf("aisacg: ListWhitelistEntries unmarshal: %w", err)
 	}
-	entries := make([]domain.WhitelistEntry, 0, len(items))
+	entries := make([]WhitelistEntry, 0, len(items))
 	for _, item := range items {
 		addrs := make([]string, 0, len(item.Addr))
 		for _, a := range item.Addr {
 			addrs = append(addrs, a.Address)
 		}
-		entries = append(entries, domain.WhitelistEntry{
+		entries = append(entries, WhitelistEntry{
 			Enable: bool(item.Enable),
 			Name:   item.Name,
 			Desc:   item.Desc,

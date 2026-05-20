@@ -1,6 +1,6 @@
 // Package desktop 定义亚信桌面管理（AIS Desktop）的领域模型和数据读取接口。
 // 本包为纯 Go 包，零外部依赖（仅使用标准库 time），可由任意上层服务直接引用。
-package aisdesk
+package desktop
 
 import "time"
 

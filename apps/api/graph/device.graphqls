@@ -1,0 +1,53 @@
+scalar MAP
+scalar UInt32
+
+type Query {
+    device(id: ID!): Device
+    devices(first: Int=20, after: String): DeviceConnection
+    deviceTopology(id: ID!, depth: Int=2):GraphResult
+}
+
+type Device {
+    id: ID!
+    name: String
+    type: String
+    mip: String
+}
+
+type IPv4Addr {
+    id: ID!
+    ip: String
+    mask: String
+    cidr: String
+    StartAddr: Float
+    EndAddr: UInt32
+}
+
+type DeviceConnection{
+    nodes: [Device]!
+    pageInfo: PageInfo!
+}
+
+type PageInfo{
+    hasNextPage: Boolean!
+    endCursor: String
+}
+
+type GraphResult{
+    nodes: [GraphNode!]!
+    edges: [GraphEdge!]!
+}
+
+type GraphNode{
+    id: ID!
+    labels: [String!]!
+    props: MAP
+}
+
+type GraphEdge{
+    id: ID!
+    from: ID!
+    to: ID!
+    type: String!
+    props: MAP
+}

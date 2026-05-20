@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jmoiron/sqlx"
 
-	"matrix/api/domain/aisacg"
+	"matrix/api/internal/infra/aisacg"
 )
 
 var _ aisacg.WhitelistRepository = (*acgWhitelistRepo)(nil)

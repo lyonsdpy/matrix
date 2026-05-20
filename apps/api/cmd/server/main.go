@@ -28,7 +28,7 @@ func main() {
 
 	repos := repository.New()
 	svcs := service.New(repos)
-	h := handler.New(svcs)
+	h := handler.New(svcs, repos)
 
 	srv := server.New(cfg, h)
 	if err := srv.Init(); err != nil {

@@ -8,21 +8,35 @@ import (
 
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"go.uber.org/zap"
-
-	domain "matrix/api/domain/lark"
 )
 
-// messenger 实现 domain.Messenger。
+// Messenger 消息发送能力。
+type Messenger interface {
+	// SendText 发送文本消息给指定用户（通过 user_id）。
+	SendText(ctx context.Context, userID string, text string) (string, error)
+
+	// SendCard 发送卡片消息给指定用户（通过 user_id）。
+	// cardJSON 为飞书卡片 JSON 字符串。
+	SendCard(ctx context.Context, userID string, cardJSON string) (string, error)
+
+	// ReplyText 回复文本消息。
+	ReplyText(ctx context.Context, messageID string, text string) (string, error)
+
+	// ReplyCard 回复卡片消息。
+	ReplyCard(ctx context.Context, messageID string, cardJSON string) (string, error)
+}
+
+// messenger 实现 Messenger。
 type messenger struct {
 	client *Client
 	logger *zap.Logger
 }
 
 // compile-time interface check
-var _ domain.Messenger = (*messenger)(nil)
+var _ Messenger = (*messenger)(nil)
 
 // NewMessenger 创建消息发送器。
-func NewMessenger(client *Client, logger *zap.Logger) domain.Messenger {
+func NewMessenger(client *Client, logger *zap.Logger) Messenger {
 	return &messenger{client: client, logger: logger}
 }
 

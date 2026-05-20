@@ -7,27 +7,34 @@ import (
 
 	larksecurity "github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v2"
 	"go.uber.org/zap"
-
-	domain "matrix/api/domain/lark"
 )
 
-// deviceFetcher 实现 domain.DeviceFetcher。
+// DeviceFetcher 设备信息全量拉取能力。
+type DeviceFetcher interface {
+	// FetchAllDevices 分页查询所有设备信息。
+	FetchAllDevices(ctx context.Context) ([]Device, error)
+
+	// GetDevice 获取单个设备详情。
+	GetDevice(ctx context.Context, deviceID string) (*Device, error)
+}
+
+// deviceFetcher 实现 DeviceFetcher。
 type deviceFetcher struct {
 	client *Client
 	logger *zap.Logger
 }
 
 // compile-time interface check
-var _ domain.DeviceFetcher = (*deviceFetcher)(nil)
+var _ DeviceFetcher = (*deviceFetcher)(nil)
 
 // NewDeviceFetcher 创建设备信息拉取器。
-func NewDeviceFetcher(client *Client, logger *zap.Logger) domain.DeviceFetcher {
+func NewDeviceFetcher(client *Client, logger *zap.Logger) DeviceFetcher {
 	return &deviceFetcher{client: client, logger: logger}
 }
 
 // FetchAllDevices 分页查询所有设备信息。
-func (f *deviceFetcher) FetchAllDevices(ctx context.Context) ([]domain.Device, error) {
-	var result []domain.Device
+func (f *deviceFetcher) FetchAllDevices(ctx context.Context) ([]Device, error) {
+	var result []Device
 	var pageToken string
 
 	for {
@@ -64,7 +71,7 @@ func (f *deviceFetcher) FetchAllDevices(ctx context.Context) ([]domain.Device, e
 }
 
 // GetDevice 获取单个设备详情。
-func (f *deviceFetcher) GetDevice(ctx context.Context, deviceID string) (*domain.Device, error) {
+func (f *deviceFetcher) GetDevice(ctx context.Context, deviceID string) (*Device, error) {
 	req := larksecurity.NewGetDeviceRecordReqBuilder().
 		DeviceRecordId(deviceID).
 		UserIdType("user_id").
@@ -85,12 +92,12 @@ func (f *deviceFetcher) GetDevice(ctx context.Context, deviceID string) (*domain
 	return &d, nil
 }
 
-// convertDevice 将 SDK DeviceRecord 转换为 domain.Device。
-func convertDevice(d *larksecurity.DeviceRecord) domain.Device {
+// convertDevice 将 SDK DeviceRecord 转换为 Device。
+func convertDevice(d *larksecurity.DeviceRecord) Device {
 	if d == nil {
-		return domain.Device{}
+		return Device{}
 	}
-	dev := domain.Device{}
+	dev := Device{}
 	if d.DeviceRecordId != nil {
 		dev.DeviceID = *d.DeviceRecordId
 	}
