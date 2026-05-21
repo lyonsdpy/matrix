@@ -4,13 +4,14 @@ import (
 	"context"
 	"net/http"
 
-	gqlhandler "github.com/99designs/gqlgen/graphql/handler"
-	"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/gin-gonic/gin"
 	"matrix/api/graph"
 	"matrix/api/graph/loader"
 	"matrix/api/internal/repository"
 	"matrix/api/internal/service"
+
+	gqlhandler "github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/gin-gonic/gin"
 )
 
 // Handler 聚合所有 HTTP 处理方法，持有 Services 引用。

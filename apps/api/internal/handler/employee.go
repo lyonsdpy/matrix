@@ -3,8 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"matrix/api/pkg/errno"
+
+	"github.com/gin-gonic/gin"
 )
 
 // GetEmployee GET /api/v1/employees/:id

@@ -3,9 +3,10 @@ package handler
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"matrix/api/internal/model"
 	"matrix/api/pkg/errno"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Hello GET /api/v1/hello?name=xxx
@@ -17,7 +18,7 @@ func (h *Handler) Hello(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errno.New(400, "参数错误").WithErr(err))
 		return
 	}
-
+	
 	// 2. 调用 Service 层执行业务逻辑
 	msg := h.svc.Hello.SayHello(req.Name)
 
