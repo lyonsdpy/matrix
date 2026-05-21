@@ -8,14 +8,19 @@ import (
 )
 
 type Config struct {
-	Server Server   `yaml:"server"`
-	Log    log.Conf `yaml:"log"`
+	Server   Server   `yaml:"server"`
+	Log      log.Conf `yaml:"log"`
+	Postgres Postgres `yaml:"postgres"`
 }
 
 type Server struct {
 	Addr         string `yaml:"addr"`
 	ReadTimeout  int    `yaml:"read_timeout"`
 	WriteTimeout int    `yaml:"write_timeout"`
+}
+
+type Postgres struct {
+	DSN string `yaml:"dsn"`
 }
 
 func Load(path string) (*Config, error) {

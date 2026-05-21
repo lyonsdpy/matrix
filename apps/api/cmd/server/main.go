@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"matrix/api/internal/handler"
+	"matrix/api/internal/infra/postgres"
 	"matrix/api/internal/repository"
 	"matrix/api/internal/server"
 	"matrix/api/internal/service"
@@ -26,7 +27,13 @@ func main() {
 	log.Config = &cfg.Log
 	log.Config.Reset()
 
-	repos := repository.New()
+	// PostgreSQL 连接（SyncRepos 所需）
+	db, err := postgres.Open(cfg.Postgres.DSN)
+	if err != nil {
+		log.Logger.Fatalf("connect postgres: %v", err)
+	}
+
+	repos := repository.New(db)
 	svcs := service.New(repos)
 	h := handler.New(svcs, repos)
 

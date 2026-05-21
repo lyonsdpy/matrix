@@ -29,6 +29,7 @@ func NewExecutableSchema(cfg Config) graphql.ExecutableSchema {
 type Config = graphql.Config[ResolverRoot, DirectiveRoot, ComplexityRoot]
 
 type ResolverRoot interface {
+	Device() DeviceResolver
 	DeviceConnection() DeviceConnectionResolver
 	IPv4Addr() IPv4AddrResolver
 	Query() QueryResolver
@@ -39,15 +40,21 @@ type DirectiveRoot struct {
 
 type ComplexityRoot struct {
 	Device struct {
-		ID   func(childComplexity int) int
-		MIP  func(childComplexity int) int
-		Name func(childComplexity int) int
-		Type func(childComplexity int) int
+		Connections func(childComplexity int) int
+		ID          func(childComplexity int) int
+		MIP         func(childComplexity int) int
+		Name        func(childComplexity int) int
+		Type        func(childComplexity int) int
 	}
 
 	DeviceConnection struct {
 		Nodes    func(childComplexity int) int
 		PageInfo func(childComplexity int) int
+	}
+
+	DeviceLink struct {
+		Relation func(childComplexity int) int
+		Target   func(childComplexity int) int
 	}
 
 	GraphEdge struct {
@@ -62,6 +69,14 @@ type ComplexityRoot struct {
 		ID     func(childComplexity int) int
 		Labels func(childComplexity int) int
 		Props  func(childComplexity int) int
+	}
+
+	GraphRelation struct {
+		FromID func(childComplexity int) int
+		ID     func(childComplexity int) int
+		Props  func(childComplexity int) int
+		ToID   func(childComplexity int) int
+		Type   func(childComplexity int) int
 	}
 
 	GraphResult struct {
@@ -90,8 +105,10 @@ type ComplexityRoot struct {
 	}
 }
 
+type DeviceResolver interface {
+	Connections(ctx context.Context, obj *domain.Device) ([]*domain.DeviceLink, error)
+}
 type DeviceConnectionResolver interface {
-	Nodes(ctx context.Context, obj *domain.DeviceConnection) ([]*domain.Device, error)
 	PageInfo(ctx context.Context, obj *domain.DeviceConnection) (*model.PageInfo, error)
 }
 type IPv4AddrResolver interface {
@@ -118,6 +135,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	_ = ec
 	switch typeName + "." + field {
 
+	case "Device.connections":
+		if e.ComplexityRoot.Device.Connections == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Device.Connections(childComplexity), true
 	case "Device.id":
 		if e.ComplexityRoot.Device.ID == nil {
 			break
@@ -155,6 +178,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.DeviceConnection.PageInfo(childComplexity), true
+
+	case "DeviceLink.relation":
+		if e.ComplexityRoot.DeviceLink.Relation == nil {
+			break
+		}
+
+		return e.ComplexityRoot.DeviceLink.Relation(childComplexity), true
+	case "DeviceLink.target":
+		if e.ComplexityRoot.DeviceLink.Target == nil {
+			break
+		}
+
+		return e.ComplexityRoot.DeviceLink.Target(childComplexity), true
 
 	case "GraphEdge.from":
 		if e.ComplexityRoot.GraphEdge.From == nil {
@@ -205,6 +241,37 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.GraphNode.Props(childComplexity), true
+
+	case "GraphRelation.from_id":
+		if e.ComplexityRoot.GraphRelation.FromID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GraphRelation.FromID(childComplexity), true
+	case "GraphRelation.id":
+		if e.ComplexityRoot.GraphRelation.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GraphRelation.ID(childComplexity), true
+	case "GraphRelation.props":
+		if e.ComplexityRoot.GraphRelation.Props == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GraphRelation.Props(childComplexity), true
+	case "GraphRelation.to_id":
+		if e.ComplexityRoot.GraphRelation.ToID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GraphRelation.ToID(childComplexity), true
+	case "GraphRelation.type":
+		if e.ComplexityRoot.GraphRelation.Type == nil {
+			break
+		}
+
+		return e.ComplexityRoot.GraphRelation.Type(childComplexity), true
 
 	case "GraphResult.edges":
 		if e.ComplexityRoot.GraphResult.Edges == nil {
@@ -611,6 +678,41 @@ func (ec *executionContext) fieldContext_Device_mip(_ context.Context, field gra
 	return fc, nil
 }
 
+func (ec *executionContext) _Device_connections(ctx context.Context, field graphql.CollectedField, obj *domain.Device) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Device_connections,
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.Device().Connections(ctx, obj)
+		},
+		nil,
+		ec.marshalODeviceLink2ᚕᚖmatrixᚋapiᚋdomainᚐDeviceLink,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Device_connections(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Device",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "target":
+				return ec.fieldContext_DeviceLink_target(ctx, field)
+			case "relation":
+				return ec.fieldContext_DeviceLink_relation(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type DeviceLink", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _DeviceConnection_nodes(ctx context.Context, field graphql.CollectedField, obj *domain.DeviceConnection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -618,7 +720,7 @@ func (ec *executionContext) _DeviceConnection_nodes(ctx context.Context, field g
 		field,
 		ec.fieldContext_DeviceConnection_nodes,
 		func(ctx context.Context) (any, error) {
-			return ec.Resolvers.DeviceConnection().Nodes(ctx, obj)
+			return obj.Nodes, nil
 		},
 		nil,
 		ec.marshalNDevice2ᚕᚖmatrixᚋapiᚋdomainᚐDevice,
@@ -631,8 +733,8 @@ func (ec *executionContext) fieldContext_DeviceConnection_nodes(_ context.Contex
 	fc = &graphql.FieldContext{
 		Object:     "DeviceConnection",
 		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
+		IsMethod:   false,
+		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
@@ -643,6 +745,8 @@ func (ec *executionContext) fieldContext_DeviceConnection_nodes(_ context.Contex
 				return ec.fieldContext_Device_type(ctx, field)
 			case "mip":
 				return ec.fieldContext_Device_mip(ctx, field)
+			case "connections":
+				return ec.fieldContext_Device_connections(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Device", field.Name)
 		},
@@ -680,6 +784,88 @@ func (ec *executionContext) fieldContext_DeviceConnection_pageInfo(_ context.Con
 				return ec.fieldContext_PageInfo_endCursor(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _DeviceLink_target(ctx context.Context, field graphql.CollectedField, obj *domain.DeviceLink) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_DeviceLink_target,
+		func(ctx context.Context) (any, error) {
+			return obj.Target, nil
+		},
+		nil,
+		ec.marshalODevice2ᚖmatrixᚋapiᚋdomainᚐDevice,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_DeviceLink_target(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "DeviceLink",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Device_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Device_name(ctx, field)
+			case "type":
+				return ec.fieldContext_Device_type(ctx, field)
+			case "mip":
+				return ec.fieldContext_Device_mip(ctx, field)
+			case "connections":
+				return ec.fieldContext_Device_connections(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Device", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _DeviceLink_relation(ctx context.Context, field graphql.CollectedField, obj *domain.DeviceLink) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_DeviceLink_relation,
+		func(ctx context.Context) (any, error) {
+			return obj.Relation, nil
+		},
+		nil,
+		ec.marshalOGraphRelation2ᚖmatrixᚋapiᚋdomainᚐGraphRelation,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_DeviceLink_relation(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "DeviceLink",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_GraphRelation_id(ctx, field)
+			case "from_id":
+				return ec.fieldContext_GraphRelation_from_id(ctx, field)
+			case "to_id":
+				return ec.fieldContext_GraphRelation_to_id(ctx, field)
+			case "type":
+				return ec.fieldContext_GraphRelation_type(ctx, field)
+			case "props":
+				return ec.fieldContext_GraphRelation_props(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type GraphRelation", field.Name)
 		},
 	}
 	return fc, nil
@@ -907,6 +1093,151 @@ func (ec *executionContext) _GraphNode_props(ctx context.Context, field graphql.
 func (ec *executionContext) fieldContext_GraphNode_props(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "GraphNode",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MAP does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GraphRelation_id(ctx context.Context, field graphql.CollectedField, obj *domain.GraphRelation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_GraphRelation_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_GraphRelation_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GraphRelation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GraphRelation_from_id(ctx context.Context, field graphql.CollectedField, obj *domain.GraphRelation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_GraphRelation_from_id,
+		func(ctx context.Context) (any, error) {
+			return obj.FromID, nil
+		},
+		nil,
+		ec.marshalOString2string,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_GraphRelation_from_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GraphRelation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GraphRelation_to_id(ctx context.Context, field graphql.CollectedField, obj *domain.GraphRelation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_GraphRelation_to_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ToID, nil
+		},
+		nil,
+		ec.marshalOString2string,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_GraphRelation_to_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GraphRelation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GraphRelation_type(ctx context.Context, field graphql.CollectedField, obj *domain.GraphRelation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_GraphRelation_type,
+		func(ctx context.Context) (any, error) {
+			return obj.Type, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_GraphRelation_type(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GraphRelation",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GraphRelation_props(ctx context.Context, field graphql.CollectedField, obj *domain.GraphRelation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_GraphRelation_props,
+		func(ctx context.Context) (any, error) {
+			return obj.Props, nil
+		},
+		nil,
+		ec.marshalOMAP2map,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_GraphRelation_props(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GraphRelation",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -1260,6 +1591,8 @@ func (ec *executionContext) fieldContext_Query_device(ctx context.Context, field
 				return ec.fieldContext_Device_type(ctx, field)
 			case "mip":
 				return ec.fieldContext_Device_mip(ctx, field)
+			case "connections":
+				return ec.fieldContext_Device_connections(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Device", field.Name)
 		},
@@ -2948,7 +3281,7 @@ func (ec *executionContext) _Device(ctx context.Context, sel ast.SelectionSet, o
 		case "id":
 			out.Values[i] = ec._Device_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._Device_name(ctx, field, obj)
@@ -2956,6 +3289,39 @@ func (ec *executionContext) _Device(ctx context.Context, sel ast.SelectionSet, o
 			out.Values[i] = ec._Device_type(ctx, field, obj)
 		case "mip":
 			out.Values[i] = ec._Device_mip(ctx, field, obj)
+		case "connections":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Device_connections(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2991,41 +3357,10 @@ func (ec *executionContext) _DeviceConnection(ctx context.Context, sel ast.Selec
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("DeviceConnection")
 		case "nodes":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._DeviceConnection_nodes(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
+			out.Values[i] = ec._DeviceConnection_nodes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
 			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "pageInfo":
 			field := field
 
@@ -3062,6 +3397,44 @@ func (ec *executionContext) _DeviceConnection(ctx context.Context, sel ast.Selec
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var deviceLinkImplementors = []string{"DeviceLink"}
+
+func (ec *executionContext) _DeviceLink(ctx context.Context, sel ast.SelectionSet, obj *domain.DeviceLink) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, deviceLinkImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("DeviceLink")
+		case "target":
+			out.Values[i] = ec._DeviceLink_target(ctx, field, obj)
+		case "relation":
+			out.Values[i] = ec._DeviceLink_relation(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3164,6 +3537,56 @@ func (ec *executionContext) _GraphNode(ctx context.Context, sel ast.SelectionSet
 			}
 		case "props":
 			out.Values[i] = ec._GraphNode_props(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.ProcessDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var graphRelationImplementors = []string{"GraphRelation"}
+
+func (ec *executionContext) _GraphRelation(ctx context.Context, sel ast.SelectionSet, obj *domain.GraphRelation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, graphRelationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("GraphRelation")
+		case "id":
+			out.Values[i] = ec._GraphRelation_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "from_id":
+			out.Values[i] = ec._GraphRelation_from_id(ctx, field, obj)
+		case "to_id":
+			out.Values[i] = ec._GraphRelation_to_id(ctx, field, obj)
+		case "type":
+			out.Values[i] = ec._GraphRelation_type(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "props":
+			out.Values[i] = ec._GraphRelation_props(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4164,6 +4587,26 @@ func (ec *executionContext) marshalODeviceConnection2ᚖmatrixᚋapiᚋdomainᚐ
 	return ec._DeviceConnection(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalODeviceLink2ᚕᚖmatrixᚋapiᚋdomainᚐDeviceLink(ctx context.Context, sel ast.SelectionSet, v []*domain.DeviceLink) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalODeviceLink2ᚖmatrixᚋapiᚋdomainᚐDeviceLink(ctx, sel, v[i])
+	})
+
+	return ret
+}
+
+func (ec *executionContext) marshalODeviceLink2ᚖmatrixᚋapiᚋdomainᚐDeviceLink(ctx context.Context, sel ast.SelectionSet, v *domain.DeviceLink) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._DeviceLink(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v any) (*float64, error) {
 	if v == nil {
 		return nil, nil
@@ -4179,6 +4622,13 @@ func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel as
 	_ = sel
 	res := graphql.MarshalFloatContext(*v)
 	return graphql.WrapContextMarshaler(ctx, res)
+}
+
+func (ec *executionContext) marshalOGraphRelation2ᚖmatrixᚋapiᚋdomainᚐGraphRelation(ctx context.Context, sel ast.SelectionSet, v *domain.GraphRelation) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._GraphRelation(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOGraphResult2ᚖmatrixᚋapiᚋgraphᚋmodelᚐGraphResult(ctx context.Context, sel ast.SelectionSet, v *model.GraphResult) graphql.Marshaler {

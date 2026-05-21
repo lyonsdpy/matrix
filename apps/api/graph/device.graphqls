@@ -12,6 +12,23 @@ type Device {
     name: String
     type: String
     mip: String
+    # connections 使用 DataLoader 批量加载，避免查询 N 个设备时产生 N 次数据库调用
+    connections: [DeviceLink]
+}
+
+# DeviceLink 表示图里的一条有向边：从当前设备出发，到 target 设备，关系描述在 relation 里
+type DeviceLink {
+    target: Device
+    relation: GraphRelation
+}
+
+# GraphRelation 是边的元数据，对应 Neo4j 里的 Relationship
+type GraphRelation {
+    id: ID!
+    from_id: String
+    to_id: String
+    type: String!
+    props: MAP
 }
 
 type IPv4Addr {

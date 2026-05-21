@@ -39,3 +39,6 @@ models:
   GraphRelation:
     model:
       - matrix/api/domain.GraphRelation
+  DeviceLink:
+    model:
+      - matrix/api/domain.DeviceLink

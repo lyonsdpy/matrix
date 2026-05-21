@@ -8,7 +8,7 @@ package graph
 //
 // Resolver 不含业务逻辑，只做三件事：
 //  1. GraphQL 参数解包（*int32 → int，*string → string，nil 处理默认值）
-//  2. 调 Service 方法
+//  2. 调 Service 或 DataLoader
 //  3. 把 Service 返回的 domain 类型转换成 GraphQL model 类型（如有必要）
 //
 // 判断逻辑该写在哪里：
@@ -19,18 +19,31 @@ package graph
 import (
 	"context"
 	"matrix/api/domain"
+	"matrix/api/graph/loader"
 	"matrix/api/graph/model"
 )
 
+// ── Device 字段 resolver ──────────────────────────────────────────────────────
+
+// Connections 是 Device.connections 字段的 resolver，使用 DataLoader 批量加载。
+//
+// 为什么不直接调 service.Topology，而是用 DataLoader？
+// 当前端查询多个设备的 connections 时：
+//   query { devices { nodes { id connections { target { id } } } } }
+// gqlgen 会为每个 Device 调一次这个 resolver（假设返回了 N 个设备）。
+// 如果这里直接查数据库，就是 N 次查询（N+1 问题）。
+// DataLoader 把同一请求内的 N 次 Load 调用收集起来，合并成一次批量查询。
+func (r *deviceResolver) Connections(ctx context.Context, obj *domain.Device) ([]*domain.DeviceLink, error) {
+	return loader.For(ctx).DevLinksByDeviceID.Load(ctx, loader.DeviceLinksKey{
+		DeviceID: obj.ID,
+		Limit:    20,
+	})
+}
+
 // ── DeviceConnection 字段 resolver ───────────────────────────────────────────
 //
-// 为什么 DeviceConnection 的字段需要单独 resolver，而不是直接映射？
-// gqlgen.yml 里配置了这两个字段走 resolver（见 autobind 章节），
-// 这样 DeviceConnection 的分页逻辑可以在 service 层组装，resolver 只负责拆包。
-
-func (r *deviceConnectionResolver) Nodes(_ context.Context, obj *domain.DeviceConnection) ([]*domain.Device, error) {
-	return obj.Nodes, nil
-}
+// DeviceConnection.nodes 已由 gqlgen 自动解析（直接读 obj.Nodes），无需手写 resolver。
+// DeviceConnection.pageInfo 因为需要把 domain 字段组装成 model.PageInfo，仍走 resolver。
 
 func (r *deviceConnectionResolver) PageInfo(_ context.Context, obj *domain.DeviceConnection) (*model.PageInfo, error) {
 	return &model.PageInfo{
@@ -41,11 +54,8 @@ func (r *deviceConnectionResolver) PageInfo(_ context.Context, obj *domain.Devic
 
 // ── IPv4Addr 标量 resolver ────────────────────────────────────────────────────
 //
-// 为什么需要这两个 resolver？
 // domain.IPv4Addr 里 StartAddr/EndAddr 是 uint64，
-// 但 GraphQL schema 定义的是 Float 和自定义标量 UInt32。
-// gqlgen 无法自动转换，所以需要手动在 resolver 里做类型映射。
-// 这是唯一合理的"类型转换写在 resolver"的场景。
+// 但 GraphQL schema 定义的是 Float 和自定义标量 UInt32，无法自动转换，需手动映射。
 
 func (r *iPv4AddrResolver) StartAddr(_ context.Context, obj *domain.IPv4Addr) (*float64, error) {
 	v := float64(obj.StartAddr)
@@ -59,7 +69,6 @@ func (r *iPv4AddrResolver) EndAddr(_ context.Context, obj *domain.IPv4Addr) (*do
 
 // ── Query resolver ────────────────────────────────────────────────────────────
 
-// Device resolver：参数直接透传，无需转换。
 func (r *queryResolver) Device(ctx context.Context, id string) (*domain.Device, error) {
 	return r.deviceSvc.Get(ctx, id)
 }
@@ -84,9 +93,7 @@ func (r *queryResolver) Devices(ctx context.Context, first *int32, after *string
 // DeviceTopology resolver：参数解包 + 调 service + 把 domain 类型转成 GraphQL model 类型。
 //
 // domain → model 的转换为什么在 resolver 而不是 service？
-// model.GraphResult / model.GraphNode / model.GraphEdge 是 gqlgen 生成的 GraphQL 专属类型，
-// service 层不应该依赖 GraphQL 包（否则 service 就和 GraphQL 耦合了）。
-// 转换逻辑简单（字段搬运），放在 resolver 完全合理。
+// model.GraphResult 是 gqlgen 生成的 GraphQL 专属类型，service 层不应该依赖 GraphQL 包。
 func (r *queryResolver) DeviceTopology(ctx context.Context, id string, depth *int32) (*model.GraphResult, error) {
 	d := 2
 	if depth != nil {
@@ -98,7 +105,6 @@ func (r *queryResolver) DeviceTopology(ctx context.Context, id string, depth *in
 		return nil, err
 	}
 
-	// domain.Device → model.GraphNode
 	nodes := make([]*model.GraphNode, 0, len(devices))
 	for _, dev := range devices {
 		nodes = append(nodes, &model.GraphNode{
@@ -108,7 +114,6 @@ func (r *queryResolver) DeviceTopology(ctx context.Context, id string, depth *in
 		})
 	}
 
-	// domain.DeviceLink → model.GraphEdge
 	edges := make([]*model.GraphEdge, 0, len(links))
 	for _, link := range links {
 		if link.Relation != nil {
@@ -125,16 +130,18 @@ func (r *queryResolver) DeviceTopology(ctx context.Context, id string, depth *in
 	return &model.GraphResult{Nodes: nodes, Edges: edges}, nil
 }
 
-// ── Resolver 注册（gqlgen 要求） ──────────────────────────────────────────────
+// ── Resolver 注册 ─────────────────────────────────────────────────────────────
 //
 // 新增模块时照此格式添加：
 //   func (r *Resolver) Xxx() XxxResolver { return &xxxResolver{r} }
 //   type xxxResolver struct{ *Resolver }
 
+func (r *Resolver) Device() DeviceResolver               { return &deviceResolver{r} }
 func (r *Resolver) DeviceConnection() DeviceConnectionResolver { return &deviceConnectionResolver{r} }
-func (r *Resolver) IPv4Addr() IPv4AddrResolver                 { return &iPv4AddrResolver{r} }
-func (r *Resolver) Query() QueryResolver                       { return &queryResolver{r} }
+func (r *Resolver) IPv4Addr() IPv4AddrResolver           { return &iPv4AddrResolver{r} }
+func (r *Resolver) Query() QueryResolver                  { return &queryResolver{r} }
 
+type deviceResolver struct{ *Resolver }
 type deviceConnectionResolver struct{ *Resolver }
 type iPv4AddrResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

@@ -15,6 +15,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/twmb/franz-go v1.21.0
 	github.com/vektah/gqlparser/v2 v2.5.32
+	github.com/vikstrous/dataloadgen v0.0.10
 	go.uber.org/zap v1.28.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -57,7 +58,6 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/urfave/cli/v3 v3.7.0 // indirect
-	github.com/vikstrous/dataloadgen v0.0.10 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect

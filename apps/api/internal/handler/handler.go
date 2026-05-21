@@ -58,6 +58,9 @@ func (h *Handler) Register(r *gin.Engine) {
 		v1.POST("/tasks/:id/enable", h.EnableTask)
 		v1.POST("/tasks/:id/disable", h.DisableTask)
 		v1.POST("/tasks/:id/run", h.RunTaskNow)
+
+		// 员工查询（跨源：PG 同步数据 + 图 User 节点，service 层 join）
+		v1.GET("/employees/:id", h.GetEmployee)
 	}
 
 	// GraphQL 端点
@@ -76,7 +79,7 @@ func (h *Handler) Register(r *gin.Engine) {
 // per-request 创建是关键：DataLoader 的批量窗口和缓存都是请求隔离的。
 func (h *Handler) dataLoaderMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		loaders := loader.NewLoaders(h.repos.Device)
+		loaders := loader.NewLoaders(h.repos.Graph.Device)
 		ctx := context.WithValue(c.Request.Context(), loader.Key, loaders)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
