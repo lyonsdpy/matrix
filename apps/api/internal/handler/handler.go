@@ -23,7 +23,8 @@ type Handler struct {
 
 // New 初始化 Handler，由 main 调用，注入 Services 和 Repositories 依赖
 func New(svc *service.Services, repos *repository.Repositories) *Handler {
-	resolver := graph.NewResolver(repos.Device)
+	// Resolver 依赖 Service 而不是 Repository——GraphQL 层不直接碰数据库
+	resolver := graph.NewResolver(svc.Device)
 	es := graph.NewExecutableSchema(graph.Config{Resolvers: resolver})
 
 	return &Handler{
@@ -75,7 +76,7 @@ func (h *Handler) Register(r *gin.Engine) {
 // per-request 创建是关键：DataLoader 的批量窗口和缓存都是请求隔离的。
 func (h *Handler) dataLoaderMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		loaders := loader.New(h.repos.Device)
+		loaders := loader.NewLoaders(h.repos.Device)
 		ctx := context.WithValue(c.Request.Context(), loader.Key, loaders)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()

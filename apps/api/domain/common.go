@@ -9,7 +9,7 @@ type UInt32 uint32
 type MAP map[string]any
 
 func (u UInt32) MarshalGQL(w io.Writer) {
-	fmt.Fprintf(w, "%d", u)
+	_, _ = fmt.Fprintf(w, "%d", u)
 }
 
 func (u *UInt32) UnmarshalGQL(v any) error {

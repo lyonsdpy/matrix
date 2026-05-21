@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"matrix/api/domain"
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -14,24 +15,55 @@ import (
 type DeviceRepo struct {
 	mu      sync.RWMutex
 	devices map[string]*domain.Device
-	ips     map[string][]*domain.IPv4Addr // deviceID -> IP 列表
+	ips     map[string][]*domain.IPv4Addr
+	links   map[string][]*domain.DeviceLink // deviceID -> 出向连接列表
 }
 
 func newDeviceRepo() *DeviceRepo {
 	return &DeviceRepo{
 		devices: make(map[string]*domain.Device),
 		ips:     make(map[string][]*domain.IPv4Addr),
+		links:   make(map[string][]*domain.DeviceLink),
 	}
 }
 
-func (r *DeviceRepo) ListDevices(_ context.Context) ([]*domain.Device, error) {
+// ListDevices 支持游标分页，after 为上一页末尾设备的 ID。
+func (r *DeviceRepo) ListDevices(_ context.Context, first int, after string) ([]*domain.Device, bool, string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*domain.Device, 0, len(r.devices))
-	for _, d := range r.devices {
-		out = append(out, d)
+
+	ids := make([]string, 0, len(r.devices))
+	for id := range r.devices {
+		ids = append(ids, id)
 	}
-	return out, nil
+	sort.Strings(ids)
+
+	start := 0
+	if after != "" {
+		for i, id := range ids {
+			if id == after {
+				start = i + 1
+				break
+			}
+		}
+	}
+	ids = ids[start:]
+
+	hasNext := len(ids) > first
+	if hasNext {
+		ids = ids[:first]
+	}
+
+	out := make([]*domain.Device, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, r.devices[id])
+	}
+
+	var endCursor string
+	if len(out) > 0 {
+		endCursor = out[len(out)-1].ID
+	}
+	return out, hasNext, endCursor, nil
 }
 
 func (r *DeviceRepo) GetDevice(_ context.Context, id string) (*domain.Device, error) {
@@ -54,6 +86,7 @@ func (r *DeviceRepo) CreateDevice(_ context.Context, name, deviceType, mip strin
 	r.mu.Lock()
 	r.devices[d.ID] = d
 	r.ips[d.ID] = nil
+	r.links[d.ID] = nil
 	r.mu.Unlock()
 	return d, nil
 }
@@ -66,18 +99,37 @@ func (r *DeviceRepo) DeleteDevice(_ context.Context, id string) (bool, error) {
 	}
 	delete(r.devices, id)
 	delete(r.ips, id)
+	delete(r.links, id)
 	return true, nil
 }
 
-// BatchListIPsByDeviceIDs 是 DataLoader 的批量查询入口。
-// 一次调用用 IN 查询替代 N 次独立查询，是消除 N+1 的关键。
-// 返回 map 而非 slice，让 DataLoader 按 key 分发结果。
-func (r *DeviceRepo) BatchListIPsByDeviceIDs(_ context.Context, ids []string) (map[string][]*domain.IPv4Addr, error) {
+// BatchIPsByDeviceIDs 是 DataLoader 的批量 IP 查询入口。
+// 一次调用替代 N 次独立查询，消除 N+1。limit=0 表示不限数量。
+func (r *DeviceRepo) BatchIPsByDeviceIDs(_ context.Context, ids []string, limit int) (map[string][]*domain.IPv4Addr, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := make(map[string][]*domain.IPv4Addr, len(ids))
 	for _, id := range ids {
-		result[id] = r.ips[id] // 没有数据时返回 nil slice，不报错
+		ips := r.ips[id]
+		if limit > 0 && len(ips) > limit {
+			ips = ips[:limit]
+		}
+		result[id] = ips
+	}
+	return result, nil
+}
+
+// BatchConnectionsByDeviceIDs 是 DataLoader 的批量连接查询入口。limit=0 表示不限数量。
+func (r *DeviceRepo) BatchConnectionsByDeviceIDs(_ context.Context, ids []string, limit int) (map[string][]*domain.DeviceLink, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make(map[string][]*domain.DeviceLink, len(ids))
+	for _, id := range ids {
+		links := r.links[id]
+		if limit > 0 && len(links) > limit {
+			links = links[:limit]
+		}
+		result[id] = links
 	}
 	return result, nil
 }

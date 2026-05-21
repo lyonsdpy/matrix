@@ -14,3 +14,10 @@ type DeviceLink struct {
 	Target   *Device        `json:"target"`
 	Relation *GraphRelation `json:"graph_relation"`
 }
+
+// DeviceConnection 是设备列表的分页容器，对应 GraphQL DeviceConnection 类型。
+type DeviceConnection struct {
+	Nodes       []*Device
+	HasNextPage bool
+	EndCursor   *string
+}
