@@ -15,7 +15,7 @@ type Endpoint struct {
 	Vendor           string         `json:"vendor"`             // 制造商
 	Model            string         `json:"model"`              // 设备型号
 	OSName           string         `json:"os_name"`            // 操作系统
-	TemporalMeta                                                // 时态元数据（版本、时间戳、软删除）
+	TemporalMeta                    // 时态元数据（版本、时间戳、软删除）
 }
 
 type EndpointType string
