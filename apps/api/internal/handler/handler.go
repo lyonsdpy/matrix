@@ -6,8 +6,10 @@ import (
 
 	"matrix/api/graph"
 	"matrix/api/graph/loader"
+	"matrix/api/internal/middleware"
 	"matrix/api/internal/repository"
 	"matrix/api/internal/service"
+	"matrix/api/pkg/config"
 
 	gqlhandler "github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
@@ -17,21 +19,25 @@ import (
 // Handler 聚合所有 HTTP 处理方法，持有 Services 引用。
 // 职责：参数绑定、调用 Service、返回 HTTP 响应，不含业务逻辑。
 type Handler struct {
-	svc        *service.Services
-	repos      *repository.Repositories
-	gqlHandler http.Handler // gqlgen 生成的 GraphQL 执行引擎，进程级单例
+	svc          *service.Services
+	repos        *repository.Repositories
+	jwtSecret    string
+	secureCookie bool
+	gqlHandler   http.Handler // gqlgen 生成的 GraphQL 执行引擎，进程级单例
 }
 
 // New 初始化 Handler，由 main 调用，注入 Services 和 Repositories 依赖
-func New(svc *service.Services, repos *repository.Repositories) *Handler {
+func New(svc *service.Services, repos *repository.Repositories, jwtCfg config.JWT) *Handler {
 	// Resolver 依赖 Service 而不是 Repository——GraphQL 层不直接碰数据库
 	resolver := graph.NewResolver(svc.Device)
 	es := graph.NewExecutableSchema(graph.Config{Resolvers: resolver})
 
 	return &Handler{
-		svc:        svc,
-		repos:      repos,
-		gqlHandler: gqlhandler.NewDefaultServer(es),
+		svc:          svc,
+		repos:        repos,
+		jwtSecret:    jwtCfg.Secret,
+		secureCookie: jwtCfg.SecureCookie,
+		gqlHandler:   gqlhandler.NewDefaultServer(es),
 	}
 }
 
@@ -40,6 +46,13 @@ func New(svc *service.Services, repos *repository.Repositories) *Handler {
 func (h *Handler) Register(r *gin.Engine) {
 	// 健康检查，不携带版本前缀，供 k8s/lb 探针直接访问
 	r.GET("/health", h.Health)
+
+	// 认证路由：不需要 JWT，开放访问
+	auth := r.Group("/api/v1/auth")
+	{
+		auth.POST("/login", h.Login)
+		auth.POST("/logout", h.Logout)
+	}
 
 	v1 := r.Group("/api/v1")
 	{
@@ -64,10 +77,9 @@ func (h *Handler) Register(r *gin.Engine) {
 		v1.GET("/employees/:id", h.GetEmployee)
 	}
 
-	// GraphQL 端点
-	// DataLoader 中间件：每个请求创建独立的 Loaders 实例注入 context，
-	// 保证 DataLoader 的批次不跨请求
+	// GraphQL 端点：JWT 鉴权 + DataLoader 批量加载
 	gql := r.Group("/graphql")
+	gql.Use(middleware.Auth(h.jwtSecret))
 	gql.Use(h.dataLoaderMiddleware())
 	gql.POST("", gin.WrapH(h.gqlHandler))
 	gql.GET("", gin.WrapH(h.gqlHandler))

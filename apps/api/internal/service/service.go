@@ -1,6 +1,11 @@
 package service
 
-import "matrix/api/internal/repository"
+import (
+	"time"
+
+	"matrix/api/internal/repository"
+	"matrix/api/pkg/config"
+)
 
 // Services 聚合所有业务逻辑实例。
 //
@@ -13,16 +18,21 @@ type Services struct {
 	Task     TaskService
 	Device   *DeviceService
 	Employee *EmployeeService
+	Auth     *AuthService
 }
 
 // New 初始化所有 Service，由 main 调用一次，注入到 Handler 层。
 // 依赖方向：main → Handler → Service → Repository，单向，不允许反向依赖。
-func New(repos *repository.Repositories) *Services {
+func New(repos *repository.Repositories, jwtCfg config.JWT) *Services {
+	expiry := time.Duration(jwtCfg.ExpiryHours) * time.Hour
+	if expiry <= 0 {
+		expiry = 24 * time.Hour
+	}
 	return &Services{
-		Hello:  &helloSvc{repo: repos.Hello},
-		Task:   newTaskSvc(repos.Task),
-		Device: NewDeviceService(repos.Graph.Device),
-		// Employee 演示跨源聚合：PG 同步层 + 图层各提供一个接口
+		Hello:    &helloSvc{repo: repos.Hello},
+		Task:     newTaskSvc(repos.Task),
+		Device:   NewDeviceService(repos.Graph.Device),
 		Employee: NewEmployeeService(repos.Sync.Employee, repos.Graph.User),
+		Auth:     NewAuthService(repos.Sync.AuthUser, jwtCfg.Secret, expiry),
 	}
 }

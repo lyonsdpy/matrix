@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
@@ -29,9 +30,11 @@ func NewDeviceRepo() *DeviceRepo {
 		ips:     make(map[string][]*domain.IPv4Addr),
 		links:   make(map[string][]*domain.DeviceLink),
 	}
-	d1 := &domain.Device{ID: "dev-1", Name: "core-switch", Type: "switch", MIP: "10.0.0.1"}
-	d2 := &domain.Device{ID: "dev-2", Name: "router-a", Type: "router", MIP: "10.0.0.2"}
-	d3 := &domain.Device{ID: "dev-3", Name: "firewall", Type: "firewall", MIP: "10.0.0.3"}
+	seed := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	seedMeta := domain.TemporalMeta{Version: 1, CreatedAt: seed, UpdatedAt: seed}
+	d1 := &domain.Device{ID: "dev-1", Name: "core-switch", Type: "switch", MIP: "10.0.0.1", TemporalMeta: seedMeta}
+	d2 := &domain.Device{ID: "dev-2", Name: "router-a", Type: "router", MIP: "10.0.0.2", TemporalMeta: seedMeta}
+	d3 := &domain.Device{ID: "dev-3", Name: "firewall", Type: "firewall", MIP: "10.0.0.3", TemporalMeta: seedMeta}
 	for _, d := range []*domain.Device{d1, d2, d3} {
 		r.devices[d.ID] = d
 		r.ips[d.ID] = nil
@@ -48,8 +51,10 @@ func (r *DeviceRepo) ListDevices(_ context.Context, first int, after string) ([]
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	ids := make([]string, 0, len(r.devices))
-	for id := range r.devices {
-		ids = append(ids, id)
+	for id, d := range r.devices {
+		if !d.IsDeleted() {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 	start := 0
@@ -81,14 +86,23 @@ func (r *DeviceRepo) GetDevice(_ context.Context, id string) (*domain.Device, er
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	d, ok := r.devices[id]
-	if !ok {
+	if !ok || d.IsDeleted() {
 		return nil, fmt.Errorf("device %s not found", id)
 	}
 	return d, nil
 }
 
 func (r *DeviceRepo) CreateDevice(_ context.Context, name, deviceType, mip string) (*domain.Device, error) {
-	d := &domain.Device{ID: uuid.New().String(), Name: name, Type: deviceType, MIP: mip}
+	now := time.Now()
+	d := &domain.Device{
+		ID:   uuid.New().String(),
+		Name: name, Type: deviceType, MIP: mip,
+		TemporalMeta: domain.TemporalMeta{
+			Version:   1,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
 	r.mu.Lock()
 	r.devices[d.ID] = d
 	r.ips[d.ID] = nil
@@ -97,15 +111,39 @@ func (r *DeviceRepo) CreateDevice(_ context.Context, name, deviceType, mip strin
 	return d, nil
 }
 
+func (r *DeviceRepo) UpdateDevice(_ context.Context, id string, name, deviceType, mip *string) (*domain.Device, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.devices[id]
+	if !ok || d.IsDeleted() {
+		return nil, fmt.Errorf("device %s not found", id)
+	}
+	if name != nil {
+		d.Name = *name
+	}
+	if deviceType != nil {
+		d.Type = *deviceType
+	}
+	if mip != nil {
+		d.MIP = *mip
+	}
+	d.UpdatedAt = time.Now()
+	d.Version++
+	return d, nil
+}
+
 func (r *DeviceRepo) DeleteDevice(_ context.Context, id string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.devices[id]; !ok {
+	d, ok := r.devices[id]
+	if !ok || d.IsDeleted() {
 		return false, nil
 	}
-	delete(r.devices, id)
-	delete(r.ips, id)
-	delete(r.links, id)
+	// 软删除：仅标记 DeletedAt，保留历史记录
+	now := time.Now()
+	d.DeletedAt = &now
+	d.UpdatedAt = now
+	d.Version++
 	return true, nil
 }
 
@@ -139,40 +177,40 @@ func (r *DeviceRepo) BatchConnectionsByDeviceIDs(_ context.Context, ids []string
 
 // ── Neo4j 实现（生产用） ───────────────────────────────────────────────────
 
-// Neo4jDeviceRepo 是 DeviceRepo 的 Neo4j 生产实现。
-// 使用时在 repository.New() 中替换掉 DeviceRepo。
 type Neo4jDeviceRepo struct {
-	Driver neo4j.Driver
-	DBName string
+	driver neo4j.Driver
+	dbName string
 }
 
 func NewNeo4jDeviceRepo(driver neo4j.Driver, dbName string) *Neo4jDeviceRepo {
-	return &Neo4jDeviceRepo{Driver: driver, DBName: dbName}
+	return &Neo4jDeviceRepo{driver: driver, dbName: dbName}
 }
 
-func (r *Neo4jDeviceRepo) FindDeviceByID(ctx context.Context, id string) (*domain.Device, error) {
-	result, err := neo4j.ExecuteQuery(ctx, r.Driver,
-		`MATCH (d:Device {id: $id}) RETURN d`,
+func (r *Neo4jDeviceRepo) GetDevice(ctx context.Context, id string) (*domain.Device, error) {
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (d:Device {id: $id}) WHERE d.deleted_at IS NULL RETURN d`,
 		map[string]any{"id": id},
 		neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase(r.DBName),
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
 	)
 	if err != nil {
 		return nil, err
 	}
 	if len(result.Records) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("device %s not found", id)
 	}
 	node, _, _ := neo4j.GetRecordValue[neo4j.Node](result.Records[0], "d")
 	return nodeToDevice(node), nil
 }
 
-func (r *Neo4jDeviceRepo) FindDevices(ctx context.Context, first int, after string) ([]*domain.Device, bool, string, error) {
-	result, err := neo4j.ExecuteQuery(ctx, r.Driver,
-		`MATCH (d:Device) WHERE $after = "" OR d.id > $after RETURN d ORDER BY d.id LIMIT $limit`,
+func (r *Neo4jDeviceRepo) ListDevices(ctx context.Context, first int, after string) ([]*domain.Device, bool, string, error) {
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (d:Device)
+		 WHERE d.deleted_at IS NULL AND ($after = "" OR d.id > $after)
+		 RETURN d ORDER BY d.id LIMIT $limit`,
 		map[string]any{"after": after, "limit": first + 1},
 		neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase(r.DBName),
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
 	)
 	if err != nil {
 		return nil, false, "", err
@@ -193,12 +231,89 @@ func (r *Neo4jDeviceRepo) FindDevices(ctx context.Context, first int, after stri
 	return devices, hasNext, endCursor, nil
 }
 
-func (r *Neo4jDeviceRepo) BatchIPsByDeviceIDs(ctx context.Context, deviceIDs []string, limit int) (map[string][]*domain.IPv4Addr, error) {
-	result, err := neo4j.ExecuteQuery(ctx, r.Driver,
-		`MATCH (d:Device)-[:HAS_IP]->(ip:IPAddress) WHERE d.id IN $deviceIDs RETURN d.id AS deviceID, collect(ip)[0..$limit] AS ips`,
-		map[string]any{"deviceIDs": deviceIDs, "limit": limit},
+func (r *Neo4jDeviceRepo) CreateDevice(ctx context.Context, name, deviceType, mip string) (*domain.Device, error) {
+	now := time.Now().UTC()
+	id := uuid.New().String()
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`CREATE (d:Device {
+			id: $id, name: $name, type: $type, mip: $mip,
+			version: 1, create_by: '', update_by: '',
+			created_at: $now, updated_at: $now
+		}) RETURN d`,
+		map[string]any{"id": id, "name": name, "type": deviceType, "mip": mip, "now": now},
 		neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase(r.DBName),
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
+	)
+	if err != nil {
+		return nil, err
+	}
+	node, _, _ := neo4j.GetRecordValue[neo4j.Node](result.Records[0], "d")
+	return nodeToDevice(node), nil
+}
+
+func (r *Neo4jDeviceRepo) UpdateDevice(ctx context.Context, id string, name, deviceType, mip *string) (*domain.Device, error) {
+	if name == nil && deviceType == nil && mip == nil {
+		return r.GetDevice(ctx, id)
+	}
+	props := map[string]any{}
+	if name != nil {
+		props["name"] = *name
+	}
+	if deviceType != nil {
+		props["type"] = *deviceType
+	}
+	if mip != nil {
+		props["mip"] = *mip
+	}
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (d:Device {id: $id}) WHERE d.deleted_at IS NULL
+		 SET d += $props, d.updated_at = $now, d.version = d.version + 1
+		 RETURN d`,
+		map[string]any{"id": id, "props": props, "now": time.Now().UTC()},
+		neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Records) == 0 {
+		return nil, fmt.Errorf("device %s not found", id)
+	}
+	node, _, _ := neo4j.GetRecordValue[neo4j.Node](result.Records[0], "d")
+	return nodeToDevice(node), nil
+}
+
+func (r *Neo4jDeviceRepo) DeleteDevice(ctx context.Context, id string) (bool, error) {
+	now := time.Now().UTC()
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (d:Device {id: $id}) WHERE d.deleted_at IS NULL
+		 SET d.deleted_at = $now, d.updated_at = $now, d.version = d.version + 1
+		 RETURN count(d) > 0 AS deleted`,
+		map[string]any{"id": id, "now": now},
+		neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
+	)
+	if err != nil {
+		return false, err
+	}
+	if len(result.Records) == 0 {
+		return false, nil
+	}
+	deleted, _, _ := neo4j.GetRecordValue[bool](result.Records[0], "deleted")
+	return deleted, nil
+}
+
+func (r *Neo4jDeviceRepo) BatchIPsByDeviceIDs(ctx context.Context, deviceIDs []string, limit int) (map[string][]*domain.IPv4Addr, error) {
+	// limit<=0 表示不限数量，Cypher 的 [0..0] 会返回空切片，用大数替代
+	cyLimit := limit
+	if cyLimit <= 0 {
+		cyLimit = 100000
+	}
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (d:Device)-[:HAS_IP]->(ip:IPAddress) WHERE d.id IN $deviceIDs RETURN d.id AS deviceID, collect(ip)[0..$limit] AS ips`,
+		map[string]any{"deviceIDs": deviceIDs, "limit": cyLimit},
+		neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
 	)
 	if err != nil {
 		return nil, err
@@ -218,11 +333,16 @@ func (r *Neo4jDeviceRepo) BatchIPsByDeviceIDs(ctx context.Context, deviceIDs []s
 }
 
 func (r *Neo4jDeviceRepo) BatchConnectionsByDeviceIDs(ctx context.Context, deviceIDs []string, limit int) (map[string][]*domain.DeviceLink, error) {
-	result, err := neo4j.ExecuteQuery(ctx, r.Driver,
+	// limit<=0 表示不限数量，Cypher 的 [0..0] 会返回空切片，用大数替代
+	cyLimit := limit
+	if cyLimit <= 0 {
+		cyLimit = 100000
+	}
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
 		`MATCH (d:Device)-[rel:CONNECTED_TO]->(target:Device) WHERE d.id IN $deviceIDs RETURN d.id AS deviceID, collect({target: target, rel: rel})[0..$limit] AS links`,
-		map[string]any{"deviceIDs": deviceIDs, "limit": limit},
+		map[string]any{"deviceIDs": deviceIDs, "limit": cyLimit},
 		neo4j.EagerResultTransformer,
-		neo4j.ExecuteQueryWithDatabase(r.DBName),
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
 	)
 	if err != nil {
 		return nil, err
@@ -237,12 +357,15 @@ func (r *Neo4jDeviceRepo) BatchConnectionsByDeviceIDs(ctx context.Context, devic
 		for _, v := range values {
 			item := v.(map[string]any)
 			rel := item["rel"].(neo4j.Relationship)
+			target := nodeToDevice(item["target"].(neo4j.Node))
 			out[deviceID] = append(out[deviceID], &domain.DeviceLink{
-				Target: nodeToDevice(item["target"].(neo4j.Node)),
+				Target: target,
 				Relation: &domain.GraphRelation{
-					ID:    rel.ElementId,
-					Type:  rel.Type,
-					Props: rel.Props,
+					ID:     rel.ElementId,
+					FromID: deviceID,
+					ToID:   target.ID,
+					Type:   rel.Type,
+					Props:  rel.Props,
 				},
 			})
 		}
@@ -259,14 +382,51 @@ func nodeToDevice(node neo4j.Node) *domain.Device {
 		}
 		return ""
 	}
+	getTime := func(key string) *time.Time {
+		if v, ok := node.Props[key]; ok {
+			switch t := v.(type) {
+			case time.Time:
+				return &t
+			case neo4j.LocalDateTime:
+				tt := t.Time()
+				return &tt
+			}
+		}
+		return nil
+	}
+	getInt := func(key string) int {
+		if v, ok := node.Props[key]; ok {
+			if n, ok := v.(int64); ok {
+				return int(n)
+			}
+		}
+		return 0
+	}
+
+	meta := domain.TemporalMeta{
+		Version:  getInt("version"),
+		CreateBy: get("create_by"),
+		UpdateBy: get("update_by"),
+	}
+	if t := getTime("created_at"); t != nil {
+		meta.CreatedAt = *t
+	}
+	if t := getTime("updated_at"); t != nil {
+		meta.UpdatedAt = *t
+	}
+	meta.DeletedAt = getTime("deleted_at")
+	meta.ValidFrom = getTime("valid_from")
+	meta.ValidTo = getTime("valid_to")
+
 	return &domain.Device{
-		ID:          get("id"),
-		Name:        get("name"),
-		Type:        get("type"),
-		MIP:         get("mip"),
-		LoginUser:   get("login_user"),
-		LoginMethod: get("login_method"),
-		LoginPasswd: get("login_passwd"),
+		ID:           get("id"),
+		Name:         get("name"),
+		Type:         get("type"),
+		MIP:          get("mip"),
+		LoginUser:    get("login_user"),
+		LoginMethod:  get("login_method"),
+		LoginPasswd:  get("login_passwd"),
+		TemporalMeta: meta,
 	}
 }
 

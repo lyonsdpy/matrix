@@ -1,70 +1,94 @@
 scalar MAP
 scalar UInt32
+scalar Time
 
 type Query {
     device(id: ID!): Device
     devices(first: Int=20, after: String): DeviceConnection
-    deviceTopology(id: ID!, depth: Int=2):GraphResult
+    deviceTopology(id: ID!, depth: Int=2): GraphResult
+}
+
+type Mutation {
+    createDevice(name: String!, deviceType: String!, mip: String!): Device!
+    updateDevice(id: ID!, input: UpdateDeviceInput!): Device!
+    deleteDevice(id: ID!): Boolean!
+}
+
+input UpdateDeviceInput {
+    name:       String
+    deviceType: String
+    mip:        String
 }
 
 type Device {
-    id: ID!
-    name: String
-    type: String
-    mip: String
+    id:         ID!
+    name:       String
+    type:       String
+    mip:        String
     # connections 使用 DataLoader 批量加载，避免查询 N 个设备时产生 N 次数据库调用
     connections: [DeviceLink]
+    # 时态字段：版本与操作人
+    version:    Int
+    createBy:   String
+    updateBy:   String
+    # 时态字段：系统时间戳
+    createdAt:  Time!
+    updatedAt:  Time!
+    deletedAt:  Time
+    # 时态字段：业务有效期
+    validFrom:  Time
+    validTo:    Time
 }
 
 # DeviceLink 表示图里的一条有向边：从当前设备出发，到 target 设备，关系描述在 relation 里
 type DeviceLink {
-    target: Device
+    target:   Device
     relation: GraphRelation
 }
 
 # GraphRelation 是边的元数据，对应 Neo4j 里的 Relationship
 type GraphRelation {
-    id: ID!
+    id:      ID!
     from_id: String
-    to_id: String
-    type: String!
-    props: MAP
+    to_id:   String
+    type:    String!
+    props:   MAP
 }
 
 type IPv4Addr {
-    id: ID!
-    ip: String
-    mask: String
-    cidr: String
+    id:        ID!
+    ip:        String
+    mask:      String
+    cidr:      String
     StartAddr: Float
-    EndAddr: UInt32
+    EndAddr:   UInt32
 }
 
-type DeviceConnection{
-    nodes: [Device]!
+type DeviceConnection {
+    nodes:    [Device]!
     pageInfo: PageInfo!
 }
 
-type PageInfo{
+type PageInfo {
     hasNextPage: Boolean!
-    endCursor: String
+    endCursor:   String
 }
 
-type GraphResult{
+type GraphResult {
     nodes: [GraphNode!]!
     edges: [GraphEdge!]!
 }
 
-type GraphNode{
-    id: ID!
+type GraphNode {
+    id:     ID!
     labels: [String!]!
-    props: MAP
+    props:  MAP
 }
 
-type GraphEdge{
-    id: ID!
+type GraphEdge {
+    id:   ID!
     from: ID!
-    to: ID!
+    to:   ID!
     type: String!
     props: MAP
 }

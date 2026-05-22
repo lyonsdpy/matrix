@@ -28,6 +28,7 @@ type DeviceRepository interface {
 	GetDevice(ctx context.Context, id string) (*domain.Device, error)
 	ListDevices(ctx context.Context, first int, after string) ([]*domain.Device, bool, string, error)
 	CreateDevice(ctx context.Context, name, deviceType, mip string) (*domain.Device, error)
+	UpdateDevice(ctx context.Context, id string, name, deviceType, mip *string) (*domain.Device, error)
 	DeleteDevice(ctx context.Context, id string) (bool, error)
 	BatchConnectionsByDeviceIDs(ctx context.Context, ids []string, limit int) (map[string][]*domain.DeviceLink, error)
 }
@@ -73,6 +74,24 @@ func (s *DeviceService) List(ctx context.Context, first int, after string) (*dom
 // 而不需要改 Resolver 或 Repository。
 func (s *DeviceService) Create(ctx context.Context, name, deviceType, mip string) (*domain.Device, error) {
 	return s.repo.CreateDevice(ctx, name, deviceType, mip)
+}
+
+// Update 更新设备属性，只更新非 nil 的字段（partial update）。
+func (s *DeviceService) Update(ctx context.Context, id string, name, deviceType, mip *string) (*domain.Device, error) {
+	d, err := s.repo.UpdateDevice(ctx, id, name, deviceType, mip)
+	if err != nil {
+		return nil, fmt.Errorf("device.Update %s: %w", id, err)
+	}
+	return d, nil
+}
+
+// Delete 软删除设备。已删除的设备不可再次删除。
+func (s *DeviceService) Delete(ctx context.Context, id string) (bool, error) {
+	ok, err := s.repo.DeleteDevice(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("device.Delete %s: %w", id, err)
+	}
+	return ok, nil
 }
 
 // Topology 用 BFS 遍历设备连接图，最多走 depth 跳。

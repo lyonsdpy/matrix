@@ -15,6 +15,9 @@ resolver:
   dir: graph
   filename_template: "{name}.resolvers.go"
 models:
+  Time:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time
   MAP:
     model:
       - github.com/99designs/gqlgen/graphql.Map

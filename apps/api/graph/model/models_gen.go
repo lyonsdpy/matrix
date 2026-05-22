@@ -21,10 +21,19 @@ type GraphResult struct {
 	Edges []*GraphEdge `json:"edges"`
 }
 
+type Mutation struct {
+}
+
 type PageInfo struct {
 	HasNextPage bool    `json:"hasNextPage"`
 	EndCursor   *string `json:"endCursor,omitempty"`
 }
 
 type Query struct {
+}
+
+type UpdateDeviceInput struct {
+	Name       *string `json:"name,omitempty"`
+	DeviceType *string `json:"deviceType,omitempty"`
+	Mip        *string `json:"mip,omitempty"`
 }

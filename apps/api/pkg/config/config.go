@@ -1,9 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
+	"matrix/api/pkg/crypto"
 	"matrix/api/pkg/log"
 )
 
@@ -11,6 +13,15 @@ type Config struct {
 	Server   Server   `yaml:"server"`
 	Log      log.Conf `yaml:"log"`
 	Postgres Postgres `yaml:"postgres"`
+	Neo4j    Neo4j    `yaml:"neo4j"`
+	JWT      JWT      `yaml:"jwt"`
+}
+
+type JWT struct {
+	Secret       string `yaml:"secret"`
+	ExpiryHours  int    `yaml:"expiry_hours"`
+	// SecureCookie 生产环境设为 true，强制 cookie 只走 HTTPS
+	SecureCookie bool   `yaml:"secure_cookie"`
 }
 
 type Server struct {
@@ -20,7 +31,29 @@ type Server struct {
 }
 
 type Postgres struct {
-	DSN string `yaml:"dsn"`
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"db"`
+	SSLMode  string `yaml:"sslmode"`
+}
+
+// DSN 拼装 pgx 格式连接串，供 postgres.Open 使用。
+func (p Postgres) DSN() string {
+	sslmode := p.SSLMode
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		p.User, p.Password, p.Host, p.Port, p.DBName, sslmode)
+}
+
+type Neo4j struct {
+	URI      string `yaml:"uri"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Database string `yaml:"database"`
 }
 
 func Load(path string) (*Config, error) {
@@ -32,5 +65,14 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	cfg.decryptSecrets()
 	return &cfg, nil
+}
+
+// decryptSecrets 对配置中的密码字段进行解密。
+// 已加密（base64 密文）的字段自动解密；明文字段原样通过，无需任何前缀标记。
+func (c *Config) decryptSecrets() {
+	c.Postgres.Password = crypto.TryDecrypt(c.Postgres.Password)
+	c.Neo4j.Password = crypto.TryDecrypt(c.Neo4j.Password)
+	c.JWT.Secret = crypto.TryDecrypt(c.JWT.Secret)
 }
