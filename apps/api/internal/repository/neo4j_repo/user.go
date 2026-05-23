@@ -2,6 +2,7 @@ package neo4j_repo
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"matrix/api/domain"
@@ -14,10 +15,7 @@ type UserGraphRepo struct {
 }
 
 func NewUserGraphRepo() *UserGraphRepo {
-	r := &UserGraphRepo{users: make(map[string]*domain.User)}
-	r.users["ou_feishu_001"] = &domain.User{ID: "usr-1", Name: "张三", FeishuID: "ou_feishu_001"}
-	r.users["ou_feishu_002"] = &domain.User{ID: "usr-2", Name: "李四", FeishuID: "ou_feishu_002"}
-	return r
+	return &UserGraphRepo{users: make(map[string]*domain.User)}
 }
 
 // FindByFeishuID 按飞书 ID 查找图中的 User 节点。nil 表示图里还没有该节点。
@@ -25,4 +23,37 @@ func (r *UserGraphRepo) FindByFeishuID(_ context.Context, feishuID string) (*dom
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.users[feishuID], nil
+}
+
+func (r *UserGraphRepo) GetUser(_ context.Context, id string) (*domain.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, u := range r.users {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, fmt.Errorf("user %s not found", id)
+}
+
+func (r *UserGraphRepo) ListUsers(_ context.Context, first int, _ string) ([]*domain.User, bool, string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	all := make([]*domain.User, 0, len(r.users))
+	for _, u := range r.users {
+		all = append(all, u)
+	}
+	if len(all) <= first {
+		return all, false, "", nil
+	}
+	return all[:first], true, all[first-1].ID, nil
+}
+
+func (r *UserGraphRepo) CreateUser(_ context.Context, name, feishuID string) (*domain.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := fmt.Sprintf("user-%d", len(r.users)+1)
+	u := &domain.User{ID: id, Name: name, FeishuID: feishuID}
+	r.users[feishuID] = u
+	return u, nil
 }

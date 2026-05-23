@@ -25,26 +25,11 @@ type DeviceRepo struct {
 }
 
 func NewDeviceRepo() *DeviceRepo {
-	r := &DeviceRepo{
+	return &DeviceRepo{
 		devices: make(map[string]*domain.Device),
 		ips:     make(map[string][]*domain.IPv4Addr),
 		links:   make(map[string][]*domain.DeviceLink),
 	}
-	seed := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	seedMeta := domain.TemporalMeta{Version: 1, CreatedAt: seed, UpdatedAt: seed}
-	d1 := &domain.Device{ID: "dev-1", Name: "core-switch", Type: "switch", MIP: "10.0.0.1", TemporalMeta: seedMeta}
-	d2 := &domain.Device{ID: "dev-2", Name: "router-a", Type: "router", MIP: "10.0.0.2", TemporalMeta: seedMeta}
-	d3 := &domain.Device{ID: "dev-3", Name: "firewall", Type: "firewall", MIP: "10.0.0.3", TemporalMeta: seedMeta}
-	for _, d := range []*domain.Device{d1, d2, d3} {
-		r.devices[d.ID] = d
-		r.ips[d.ID] = nil
-		r.links[d.ID] = nil
-	}
-	r.links["dev-1"] = []*domain.DeviceLink{
-		{Target: d2, Relation: &domain.GraphRelation{ID: "rel-1", FromID: "dev-1", ToID: "dev-2", Type: "CONNECTED_TO"}},
-		{Target: d3, Relation: &domain.GraphRelation{ID: "rel-2", FromID: "dev-1", ToID: "dev-3", Type: "CONNECTED_TO"}},
-	}
-	return r
 }
 
 func (r *DeviceRepo) ListDevices(_ context.Context, first int, after string) ([]*domain.Device, bool, string, error) {
@@ -159,6 +144,30 @@ func (r *DeviceRepo) BatchIPsByDeviceIDs(_ context.Context, ids []string, limit 
 		result[id] = ips
 	}
 	return result, nil
+}
+
+func (r *DeviceRepo) CreateConnection(_ context.Context, fromID, toID string) (*domain.DeviceLink, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	from, ok := r.devices[fromID]
+	if !ok || from.IsDeleted() {
+		return nil, fmt.Errorf("device %s not found", fromID)
+	}
+	to, ok := r.devices[toID]
+	if !ok || to.IsDeleted() {
+		return nil, fmt.Errorf("device %s not found", toID)
+	}
+	link := &domain.DeviceLink{
+		Target: to,
+		Relation: &domain.GraphRelation{
+			ID:     uuid.New().String(),
+			FromID: fromID,
+			ToID:   toID,
+			Type:   "CONNECTED_TO",
+		},
+	}
+	r.links[fromID] = append(r.links[fromID], link)
+	return link, nil
 }
 
 func (r *DeviceRepo) BatchConnectionsByDeviceIDs(_ context.Context, ids []string, limit int) (map[string][]*domain.DeviceLink, error) {
@@ -330,6 +339,39 @@ func (r *Neo4jDeviceRepo) BatchIPsByDeviceIDs(ctx context.Context, deviceIDs []s
 		}
 	}
 	return out, nil
+}
+
+func (r *Neo4jDeviceRepo) CreateConnection(ctx context.Context, fromID, toID string) (*domain.DeviceLink, error) {
+	relID := uuid.NewSHA1(uuid.Nil, []byte(fromID+"-"+toID)).String()
+	now := time.Now().UTC()
+	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (a:Device {id: $fromID}), (b:Device {id: $toID})
+		 WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL
+		 MERGE (a)-[r:CONNECTED_TO {id: $relID}]->(b)
+		 ON CREATE SET r.created_at = $now
+		 RETURN b, r`,
+		map[string]any{"fromID": fromID, "toID": toID, "relID": relID, "now": now},
+		neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Records) == 0 {
+		return nil, fmt.Errorf("device %s or %s not found", fromID, toID)
+	}
+	targetNode, _, _ := neo4j.GetRecordValue[neo4j.Node](result.Records[0], "b")
+	rel, _, _ := neo4j.GetRecordValue[neo4j.Relationship](result.Records[0], "r")
+	return &domain.DeviceLink{
+		Target: nodeToDevice(targetNode),
+		Relation: &domain.GraphRelation{
+			ID:     rel.ElementId,
+			FromID: fromID,
+			ToID:   toID,
+			Type:   rel.Type,
+			Props:  rel.Props,
+		},
+	}, nil
 }
 
 func (r *Neo4jDeviceRepo) BatchConnectionsByDeviceIDs(ctx context.Context, deviceIDs []string, limit int) (map[string][]*domain.DeviceLink, error) {

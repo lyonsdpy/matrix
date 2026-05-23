@@ -9,9 +9,10 @@ type Query {
 }
 
 type Mutation {
-    createDevice(name: String!, deviceType: String!, mip: String!): Device!
+    createDevice(name: String!, deviceType: String!, mip: String!, connectTo: [ID!]): Device!
     updateDevice(id: ID!, input: UpdateDeviceInput!): Device!
     deleteDevice(id: ID!): Boolean!
+    createConnection(fromID: ID!, toID: ID!): DeviceLink!
 }
 
 input UpdateDeviceInput {
@@ -20,7 +21,7 @@ input UpdateDeviceInput {
     mip:        String
 }
 
-type Device {
+type Device implements Auditable {
     id:         ID!
     name:       String
     type:       String

@@ -11,9 +11,14 @@ import (
 	"matrix/api/internal/service"
 	"matrix/api/pkg/config"
 
+	"github.com/99designs/gqlgen/graphql"
 	gqlhandler "github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
+	"github.com/99designs/gqlgen/graphql/handler/lru"
+	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gin-gonic/gin"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 // Handler 聚合所有 HTTP 处理方法，持有 Services 引用。
@@ -37,7 +42,7 @@ func New(svc *service.Services, repos *repository.Repositories, jwtCfg config.JW
 		repos:        repos,
 		jwtSecret:    jwtCfg.Secret,
 		secureCookie: jwtCfg.SecureCookie,
-		gqlHandler:   gqlhandler.NewDefaultServer(es),
+		gqlHandler:   newGQLServer(es),
 	}
 }
 
@@ -97,4 +102,20 @@ func (h *Handler) dataLoaderMiddleware() gin.HandlerFunc {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
+}
+
+// newGQLServer 用显式配置替代已废弃的 NewDefaultServer。
+// 不注册 WebSocket transport——当前路由只有 POST/GET，SSE/WS 均未启用。
+func newGQLServer(es graphql.ExecutableSchema) *gqlhandler.Server {
+	srv := gqlhandler.New(es)
+	srv.AddTransport(transport.Options{})
+	srv.AddTransport(transport.GET{})
+	srv.AddTransport(transport.POST{})
+	srv.AddTransport(transport.MultipartForm{})
+	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
+	srv.Use(extension.Introspection{})
+	srv.Use(extension.AutomaticPersistedQuery{
+		Cache: lru.New[string](100),
+	})
+	return srv
 }

@@ -104,9 +104,10 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		CreateDevice func(childComplexity int, name string, deviceType string, mip string) int
-		DeleteDevice func(childComplexity int, id string) int
-		UpdateDevice func(childComplexity int, id string, input model.UpdateDeviceInput) int
+		CreateConnection func(childComplexity int, fromID string, toID string) int
+		CreateDevice     func(childComplexity int, name string, deviceType string, mip string, connectTo []string) int
+		DeleteDevice     func(childComplexity int, id string) int
+		UpdateDevice     func(childComplexity int, id string, input model.UpdateDeviceInput) int
 	}
 
 	PageInfo struct {
@@ -133,9 +134,10 @@ type IPv4AddrResolver interface {
 	EndAddr(ctx context.Context, obj *domain.IPv4Addr) (*domain.UInt32, error)
 }
 type MutationResolver interface {
-	CreateDevice(ctx context.Context, name string, deviceType string, mip string) (*domain.Device, error)
+	CreateDevice(ctx context.Context, name string, deviceType string, mip string, connectTo []string) (*domain.Device, error)
 	UpdateDevice(ctx context.Context, id string, input model.UpdateDeviceInput) (*domain.Device, error)
 	DeleteDevice(ctx context.Context, id string) (bool, error)
+	CreateConnection(ctx context.Context, fromID string, toID string) (*domain.DeviceLink, error)
 }
 type QueryResolver interface {
 	Device(ctx context.Context, id string) (*domain.Device, error)
@@ -393,6 +395,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.IPv4Addr.StartAddr(childComplexity), true
 
+	case "Mutation.createConnection":
+		if e.ComplexityRoot.Mutation.CreateConnection == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createConnection_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.CreateConnection(childComplexity, args["fromID"].(string), args["toID"].(string)), true
 	case "Mutation.createDevice":
 		if e.ComplexityRoot.Mutation.CreateDevice == nil {
 			break
@@ -403,7 +416,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.ComplexityRoot.Mutation.CreateDevice(childComplexity, args["name"].(string), args["deviceType"].(string), args["mip"].(string)), true
+		return e.ComplexityRoot.Mutation.CreateDevice(childComplexity, args["name"].(string), args["deviceType"].(string), args["mip"].(string), args["connectTo"].([]string)), true
 	case "Mutation.deleteDevice":
 		if e.ComplexityRoot.Mutation.DeleteDevice == nil {
 			break
@@ -557,7 +570,7 @@ func newExecutionContext(
 	}
 }
 
-//go:embed "device.graphqls"
+//go:embed "common.graphqls" "device.graphqls"
 var sourcesFS embed.FS
 
 func sourceData(filename string) string {
@@ -569,6 +582,7 @@ func sourceData(filename string) string {
 }
 
 var sources = []*ast.Source{
+	{Name: "common.graphqls", Input: sourceData("common.graphqls"), BuiltIn: false},
 	{Name: "device.graphqls", Input: sourceData("device.graphqls"), BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -576,6 +590,22 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Mutation_createConnection_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "fromID", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["fromID"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "toID", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["toID"] = arg1
+	return args, nil
+}
 
 func (ec *executionContext) field_Mutation_createDevice_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -595,6 +625,11 @@ func (ec *executionContext) field_Mutation_createDevice_args(ctx context.Context
 		return nil, err
 	}
 	args["mip"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "connectTo", ec.unmarshalOID2ᚕstringᚄ)
+	if err != nil {
+		return nil, err
+	}
+	args["connectTo"] = arg3
 	return args, nil
 }
 
@@ -1941,7 +1976,7 @@ func (ec *executionContext) _Mutation_createDevice(ctx context.Context, field gr
 		ec.fieldContext_Mutation_createDevice,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.Resolvers.Mutation().CreateDevice(ctx, fc.Args["name"].(string), fc.Args["deviceType"].(string), fc.Args["mip"].(string))
+			return ec.Resolvers.Mutation().CreateDevice(ctx, fc.Args["name"].(string), fc.Args["deviceType"].(string), fc.Args["mip"].(string), fc.Args["connectTo"].([]string))
 		},
 		nil,
 		ec.marshalNDevice2ᚖmatrixᚋapiᚋdomainᚐDevice,
@@ -2106,6 +2141,53 @@ func (ec *executionContext) fieldContext_Mutation_deleteDevice(ctx context.Conte
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteDevice_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_createConnection(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_createConnection,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().CreateConnection(ctx, fc.Args["fromID"].(string), fc.Args["toID"].(string))
+		},
+		nil,
+		ec.marshalNDeviceLink2ᚖmatrixᚋapiᚋdomainᚐDeviceLink,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_createConnection(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "target":
+				return ec.fieldContext_DeviceLink_target(ctx, field)
+			case "relation":
+				return ec.fieldContext_DeviceLink_relation(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type DeviceLink", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createConnection_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3935,11 +4017,31 @@ func (ec *executionContext) unmarshalInputUpdateDeviceInput(ctx context.Context,
 
 // region    ************************** interface.gotpl ***************************
 
+func (ec *executionContext) _Auditable(ctx context.Context, sel ast.SelectionSet, obj domain.Auditable) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case domain.Device:
+		return ec._Device(ctx, sel, &obj)
+	case *domain.Device:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._Device(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of Auditable must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
 
-var deviceImplementors = []string{"Device"}
+var deviceImplementors = []string{"Device", "Auditable"}
 
 func (ec *executionContext) _Device(ctx context.Context, sel ast.SelectionSet, obj *domain.Device) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, deviceImplementors)
@@ -4530,6 +4632,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "createConnection":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createConnection(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5076,6 +5185,20 @@ func (ec *executionContext) marshalNDevice2ᚖmatrixᚋapiᚋdomainᚐDevice(ctx
 	return ec._Device(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNDeviceLink2matrixᚋapiᚋdomainᚐDeviceLink(ctx context.Context, sel ast.SelectionSet, v domain.DeviceLink) graphql.Marshaler {
+	return ec._DeviceLink(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNDeviceLink2ᚖmatrixᚋapiᚋdomainᚐDeviceLink(ctx context.Context, sel ast.SelectionSet, v *domain.DeviceLink) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._DeviceLink(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNGraphEdge2ᚕᚖmatrixᚋapiᚋgraphᚋmodelᚐGraphEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.GraphEdge) graphql.Marshaler {
 	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
 		fc := graphql.GetFieldContext(ctx)
@@ -5459,6 +5582,42 @@ func (ec *executionContext) marshalOGraphResult2ᚖmatrixᚋapiᚋgraphᚋmodel�
 		return graphql.Null
 	}
 	return ec._GraphResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOID2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNID2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOID2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNID2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOInt2ᚖint32(ctx context.Context, v any) (*int32, error) {

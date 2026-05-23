@@ -22,12 +22,32 @@ type DeviceGraphRepo interface {
 	DeleteDevice(ctx context.Context, id string) (bool, error)
 	BatchConnectionsByDeviceIDs(ctx context.Context, ids []string, limit int) (map[string][]*domain.DeviceLink, error)
 	BatchIPsByDeviceIDs(ctx context.Context, ids []string, limit int) (map[string][]*domain.IPv4Addr, error)
+	CreateConnection(ctx context.Context, fromID, toID string) (*domain.DeviceLink, error)
+}
+
+type UserGraphRepo interface {
+	FindByFeishuID(_ context.Context, feishuID string) (*domain.User, error)
+	GetUser(ctx context.Context, id string) (*domain.User, error)
+	ListUsers(ctx context.Context, first int, after string) ([]*domain.User, bool, string, error)
+	CreateUser(_ context.Context, name, feishuID string) (*domain.User, error)
+}
+
+type GroupGraphRepo interface {
+	GetGroup(ctx context.Context, id string) (*domain.Group, error)
+	ListGroups(_ context.Context, first int, _ string) ([]*domain.Group, bool, string, error)
+	GreateGroup(_ context.Context, name string) (*domain.Group, error)
+	GetUserGroups(_ context.Context, userID string) ([]*domain.UserGroupLink, error)
+	GetGroupMembers(_ context.Context, groupID string) ([]*domain.UserGroupLink, error)
+	GetGroupChildren(_ context.Context, parentID string) ([]*domain.GroupGroupLink, error)
+	AddUserToGroup(_ context.Context, userID, groupID string) error
+	AddGroupToGroup(_ context.Context, parentID, childID string) error
 }
 
 // GraphRepos 图数据库中的 domain 数据。
 type GraphRepos struct {
 	Device DeviceGraphRepo
 	User   *neo4j_repo.UserGraphRepo
+	Group  GroupGraphRepo
 }
 
 // SyncRepos 从外部系统同步过来、存储在 PostgreSQL 的数据，以及本地 auth 账号体系。
@@ -62,10 +82,12 @@ func New(db *sqlx.DB, neo4jDriver neo4j.Driver, neo4jDB string) *Repositories {
 		deviceRepo = neo4j_repo.NewDeviceRepo()
 	}
 
+	userRepo := neo4j_repo.NewUserGraphRepo()
 	return &Repositories{
 		Graph: &GraphRepos{
 			Device: deviceRepo,
-			User:   neo4j_repo.NewUserGraphRepo(),
+			User:   userRepo,
+			Group:  neo4j_repo.NewGroupGraphRepo(userRepo),
 		},
 		Sync: &SyncRepos{
 			Employee:     pg_repo.NewEmployeeRepository(db),

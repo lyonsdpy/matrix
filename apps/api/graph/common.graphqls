@@ -1,0 +1,12 @@
+# Auditable 是所有业务实体共用的审计字段契约。
+# 新增业务类型时，在 type 声明中 implements Auditable，并列出以下字段即可。
+interface Auditable {
+    version:   Int
+    createBy:  String
+    updateBy:  String
+    createdAt: Time!
+    updatedAt: Time!
+    deletedAt: Time
+    validFrom: Time
+    validTo:   Time
+}

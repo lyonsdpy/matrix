@@ -31,6 +31,7 @@ type DeviceRepository interface {
 	UpdateDevice(ctx context.Context, id string, name, deviceType, mip *string) (*domain.Device, error)
 	DeleteDevice(ctx context.Context, id string) (bool, error)
 	BatchConnectionsByDeviceIDs(ctx context.Context, ids []string, limit int) (map[string][]*domain.DeviceLink, error)
+	CreateConnection(ctx context.Context, fromID, toID string) (*domain.DeviceLink, error)
 }
 
 // DeviceService 是设备模块的业务逻辑层，持有 Repository 接口而非具体实现。
@@ -69,11 +70,19 @@ func (s *DeviceService) List(ctx context.Context, first int, after string) (*dom
 	return conn, nil
 }
 
-// Create 创建设备。当前逻辑简单，但 Service 层是扩展点：
-// 未来在 repo.CreateDevice 前后可插入：权限校验、重复检测、Kafka 消息、审计日志等，
-// 而不需要改 Resolver 或 Repository。
-func (s *DeviceService) Create(ctx context.Context, name, deviceType, mip string) (*domain.Device, error) {
-	return s.repo.CreateDevice(ctx, name, deviceType, mip)
+// Create 创建设备，并可选地一次性建立到其他设备的连接关系。
+// connectTo 为空时退化为单纯创建节点，有值时在同一调用内完成节点+边的写入。
+func (s *DeviceService) Create(ctx context.Context, name, deviceType, mip string, connectTo []string) (*domain.Device, error) {
+	d, err := s.repo.CreateDevice(ctx, name, deviceType, mip)
+	if err != nil {
+		return nil, err
+	}
+	for _, toID := range connectTo {
+		if _, err := s.repo.CreateConnection(ctx, d.ID, toID); err != nil {
+			return nil, fmt.Errorf("device.Create: connect to %s: %w", toID, err)
+		}
+	}
+	return d, nil
 }
 
 // Update 更新设备属性，只更新非 nil 的字段（partial update）。
@@ -92,6 +101,15 @@ func (s *DeviceService) Delete(ctx context.Context, id string) (bool, error) {
 		return false, fmt.Errorf("device.Delete %s: %w", id, err)
 	}
 	return ok, nil
+}
+
+// CreateConnection 在两个设备之间创建 CONNECTED_TO 关系。
+func (s *DeviceService) CreateConnection(ctx context.Context, fromID, toID string) (*domain.DeviceLink, error) {
+	link, err := s.repo.CreateConnection(ctx, fromID, toID)
+	if err != nil {
+		return nil, fmt.Errorf("device.CreateConnection %s->%s: %w", fromID, toID, err)
+	}
+	return link, nil
 }
 
 // Topology 用 BFS 遍历设备连接图，最多走 depth 跳。

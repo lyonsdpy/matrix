@@ -33,6 +33,9 @@ models:
   UInt32:
     model:
       - matrix/api/domain.UInt32
+  Auditable:
+    model:
+      - matrix/api/domain.Auditable
   Device:
     model:
       - matrix/api/domain.Device

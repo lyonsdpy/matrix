@@ -14,6 +14,8 @@ type Device struct {
 	TemporalMeta        // 当前态时态元数据（版本、时间戳、软删除）
 }
 
+func (d Device) IsAuditable() {}
+
 type DeviceLink struct {
 	Target   *Device        `json:"target"`
 	Relation *GraphRelation `json:"graph_relation"`

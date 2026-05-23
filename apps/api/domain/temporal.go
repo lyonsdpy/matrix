@@ -12,6 +12,12 @@ const (
 	AuditRestore AuditAction = "restore" // 从软删除恢复
 )
 
+// Auditable 是 GraphQL Auditable interface 对应的 Go marker interface。
+// 凡需要暴露审计字段的 domain 类型都实现此接口（添加 IsAuditable 方法即可）。
+type Auditable interface {
+	IsAuditable()
+}
+
 // TemporalMeta 时态元数据，嵌入节点和边结构体。
 //
 // 时间维度说明：

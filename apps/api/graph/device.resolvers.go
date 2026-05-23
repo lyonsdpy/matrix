@@ -30,7 +30,7 @@ func (r *deviceResolver) Connections(ctx context.Context, obj *domain.Device) ([
 }
 
 // Version 把 domain 的 int 转成 GraphQL 的 *int32（可空，存根设备版本为 0 时返回 nil）。
-func (r *deviceResolver) Version(_ context.Context, obj *domain.Device) (*int32, error) {
+func (r *deviceResolver) Version(ctx context.Context, obj *domain.Device) (*int32, error) {
 	if obj.TemporalMeta.Version == 0 {
 		return nil, nil
 	}
@@ -58,16 +58,24 @@ func (r *iPv4AddrResolver) EndAddr(ctx context.Context, obj *domain.IPv4Addr) (*
 	return &v, nil
 }
 
-func (r *mutationResolver) CreateDevice(ctx context.Context, name string, deviceType string, mip string) (*domain.Device, error) {
-	return r.deviceSvc.Create(ctx, name, deviceType, mip)
+// CreateDevice is the resolver for the createDevice field.
+func (r *mutationResolver) CreateDevice(ctx context.Context, name string, deviceType string, mip string, connectTo []string) (*domain.Device, error) {
+	return r.deviceSvc.Create(ctx, name, deviceType, mip, connectTo)
 }
 
+// UpdateDevice is the resolver for the updateDevice field.
 func (r *mutationResolver) UpdateDevice(ctx context.Context, id string, input model.UpdateDeviceInput) (*domain.Device, error) {
 	return r.deviceSvc.Update(ctx, id, input.Name, input.DeviceType, input.Mip)
 }
 
+// DeleteDevice is the resolver for the deleteDevice field.
 func (r *mutationResolver) DeleteDevice(ctx context.Context, id string) (bool, error) {
 	return r.deviceSvc.Delete(ctx, id)
+}
+
+// CreateConnection is the resolver for the createConnection field.
+func (r *mutationResolver) CreateConnection(ctx context.Context, fromID string, toID string) (*domain.DeviceLink, error) {
+	return r.deviceSvc.CreateConnection(ctx, fromID, toID)
 }
 
 // Device is the resolver for the device field.
