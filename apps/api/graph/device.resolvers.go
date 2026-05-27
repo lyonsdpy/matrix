@@ -60,27 +60,27 @@ func (r *iPv4AddrResolver) EndAddr(ctx context.Context, obj *domain.IPv4Addr) (*
 
 // CreateDevice is the resolver for the createDevice field.
 func (r *mutationResolver) CreateDevice(ctx context.Context, name string, deviceType string, mip string, connectTo []string) (*domain.Device, error) {
-	return r.deviceSvc.Create(ctx, name, deviceType, mip, connectTo)
+	return r.deps.DeviceSvc.Create(ctx, name, deviceType, mip, connectTo)
 }
 
 // UpdateDevice is the resolver for the updateDevice field.
 func (r *mutationResolver) UpdateDevice(ctx context.Context, id string, input model.UpdateDeviceInput) (*domain.Device, error) {
-	return r.deviceSvc.Update(ctx, id, input.Name, input.DeviceType, input.Mip)
+	return r.deps.DeviceSvc.Update(ctx, id, input.Name, input.DeviceType, input.Mip)
 }
 
 // DeleteDevice is the resolver for the deleteDevice field.
 func (r *mutationResolver) DeleteDevice(ctx context.Context, id string) (bool, error) {
-	return r.deviceSvc.Delete(ctx, id)
+	return r.deps.DeviceSvc.Delete(ctx, id)
 }
 
 // CreateConnection is the resolver for the createConnection field.
 func (r *mutationResolver) CreateConnection(ctx context.Context, fromID string, toID string) (*domain.DeviceLink, error) {
-	return r.deviceSvc.CreateConnection(ctx, fromID, toID)
+	return r.deps.DeviceSvc.CreateConnection(ctx, fromID, toID)
 }
 
 // Device is the resolver for the device field.
 func (r *queryResolver) Device(ctx context.Context, id string) (*domain.Device, error) {
-	return r.deviceSvc.Get(ctx, id)
+	return r.deps.DeviceSvc.Get(ctx, id)
 }
 
 // Devices resolver：唯一的工作是解包 GraphQL 的可空参数并给默认值，然后调 service。
@@ -97,7 +97,7 @@ func (r *queryResolver) Devices(ctx context.Context, first *int32, after *string
 	if after != nil {
 		cursor = *after
 	}
-	return r.deviceSvc.List(ctx, limit, cursor)
+	return r.deps.DeviceSvc.List(ctx, limit, cursor)
 }
 
 // DeviceTopology resolver：参数解包 + 调 service + 把 domain 类型转成 GraphQL model 类型。
@@ -110,7 +110,7 @@ func (r *queryResolver) DeviceTopology(ctx context.Context, id string, depth *in
 		d = int(*depth)
 	}
 
-	devices, links, err := r.deviceSvc.Topology(ctx, id, d)
+	devices, links, err := r.deps.DeviceSvc.Topology(ctx, id, d)
 	if err != nil {
 		return nil, err
 	}

@@ -239,6 +239,9 @@ func convertUser(u *larkcontact.User) User {
 	if u.UserId != nil {
 		user.UserID = *u.UserId
 	}
+	if u.OpenId != nil {
+		user.OpenID = *u.OpenId
+	}
 	if u.Name != nil {
 		user.Name = *u.Name
 	}
@@ -277,20 +280,26 @@ func convertDepartment(d *larkcontact.Department) Department {
 	return dept
 }
 
-// userStatusToInt 将 SDK UserStatus 转换为 domain 整数状态。
-// 1=已激活, 2=已禁用, 4=未激活, 0=未知。
+// userStatusToInt 将 SDK UserStatus 转换为在职状态整数（按优先级互斥判断）。
+// 1=在职, 2=已冻结, 3=离职, 4=待入职, 0=未知。
+// 注意：status 字段需应用具备 contact:user.employee:readonly 权限飞书才返回，
+// 否则 s 为 nil，全部落到 0（未知）。
 func userStatusToInt(s *larkcontact.UserStatus) int {
 	if s == nil {
 		return 0
 	}
-	if s.IsActivated != nil && *s.IsActivated {
-		return 1
+	// 离职优先：is_exited（主动退出）一段时间后会转为 is_resigned，二者都视为离职
+	if (s.IsResigned != nil && *s.IsResigned) || (s.IsExited != nil && *s.IsExited) {
+		return 3
 	}
 	if s.IsFrozen != nil && *s.IsFrozen {
 		return 2
 	}
 	if s.IsUnjoin != nil && *s.IsUnjoin {
 		return 4
+	}
+	if s.IsActivated != nil && *s.IsActivated {
+		return 1
 	}
 	return 0
 }

@@ -6,6 +6,19 @@ type User struct {
 	FeishuID string `json:"feishu_id"`
 }
 
+// SyncedUser 已从飞书同步到 Neo4j 的用户完整视图，用于用户管理查询。
+// 比 User 多出 sync 写入的飞书属性，仅用于读展示，不参与图关系建模。
+type SyncedUser struct {
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	FeishuID      string   `json:"feishu_id"` // open_id
+	UserID        string   `json:"user_id"`   // 飞书租户内 user_id
+	Email         string   `json:"email"`
+	Mobile        string   `json:"mobile"`
+	Status        int      `json:"status"`
+	DepartmentIDs []string `json:"department_ids"`
+}
+
 type Group struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

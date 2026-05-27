@@ -56,13 +56,13 @@ func main() {
 
 	// ── 4. 创建组 ──────────────────────────────────────────────────────────────
 	fmt.Println("\n=== 4. CreateGroup ===")
-	ops, err := groupRepo.GreateGroup(ctx, "网络运维组")
+	ops, err := groupRepo.CreateGroup(ctx, "网络运维组")
 	if err != nil {
-		log.Fatalf("GreateGroup ops: %v", err)
+		log.Fatalf("CreateGroup ops: %v", err)
 	}
-	security, err := groupRepo.GreateGroup(ctx, "安全组")
+	security, err := groupRepo.CreateGroup(ctx, "安全组")
 	if err != nil {
-		log.Fatalf("GreateGroup security: %v", err)
+		log.Fatalf("CreateGroup security: %v", err)
 	}
 	fmt.Printf("created: id=%s name=%s\n", ops.ID, ops.Name)
 	fmt.Printf("created: id=%s name=%s\n", security.ID, security.Name)
@@ -121,9 +121,9 @@ func main() {
 
 	// ── 10. 组与组的父子关系 ───────────────────────────────────────────────────
 	fmt.Println("\n=== 10. AddGroupToGroup + GetGroupChildren ===")
-	parent, err := groupRepo.GreateGroup(ctx, "IT部门")
+	parent, err := groupRepo.CreateGroup(ctx, "IT部门")
 	if err != nil {
-		log.Fatalf("GreateGroup parent: %v", err)
+		log.Fatalf("CreateGroup parent: %v", err)
 	}
 	if err := groupRepo.AddGroupToGroup(ctx, parent.ID, ops.ID); err != nil {
 		log.Fatalf("AddGroupToGroup: %v", err)

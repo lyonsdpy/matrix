@@ -106,8 +106,8 @@ func main() {
 	}
 
 	repos := repository.New(db, neo4jDriver, cfg.Neo4j.Database)
-	svcs := service.New(repos, cfg.JWT)
-	h := handler.New(svcs, repos, cfg.JWT)
+	svcs := service.New(repos, cfg.JWT, cfg.Lark)
+	h := handler.New(svcs, repos.Graph.Device, cfg.JWT, cfg.Lark)
 
 	srv := server.New(cfg, h)
 	if err := srv.Init(); err != nil {
@@ -123,6 +123,9 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+
+	// 先停止后台 goroutine，再等待 HTTP 连接排尽
+	svcs.Shutdown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

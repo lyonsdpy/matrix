@@ -30,12 +30,15 @@ type UserGraphRepo interface {
 	GetUser(ctx context.Context, id string) (*domain.User, error)
 	ListUsers(ctx context.Context, first int, after string) ([]*domain.User, bool, string, error)
 	CreateUser(_ context.Context, name, feishuID string) (*domain.User, error)
+	// SearchSyncedUsers 按 name/email 模糊搜索已同步用户，游标分页（cursor 为 feishu_id）。
+	// 返回完整飞书字段，供用户管理列表展示。
+	SearchSyncedUsers(ctx context.Context, search, cursor string, limit int) ([]*domain.SyncedUser, bool, string, error)
 }
 
 type GroupGraphRepo interface {
 	GetGroup(ctx context.Context, id string) (*domain.Group, error)
 	ListGroups(_ context.Context, first int, _ string) ([]*domain.Group, bool, string, error)
-	GreateGroup(_ context.Context, name string) (*domain.Group, error)
+	CreateGroup(_ context.Context, name string) (*domain.Group, error)
 	GetUserGroups(_ context.Context, userID string) ([]*domain.UserGroupLink, error)
 	GetGroupMembers(_ context.Context, groupID string) ([]*domain.UserGroupLink, error)
 	GetGroupChildren(_ context.Context, parentID string) ([]*domain.GroupGroupLink, error)
@@ -46,7 +49,7 @@ type GroupGraphRepo interface {
 // GraphRepos 图数据库中的 domain 数据。
 type GraphRepos struct {
 	Device DeviceGraphRepo
-	User   *neo4j_repo.UserGraphRepo
+	User   UserGraphRepo
 	Group  GroupGraphRepo
 }
 
@@ -82,12 +85,18 @@ func New(db *sqlx.DB, neo4jDriver neo4j.Driver, neo4jDB string) *Repositories {
 		deviceRepo = neo4j_repo.NewDeviceRepo()
 	}
 
-	userRepo := neo4j_repo.NewUserGraphRepo()
+	// Group 仍是内存存根（暂未接 Neo4j），依赖内存版 UserGraphRepo，维持现状不动
+	memUserRepo := neo4j_repo.NewUserGraphRepo()
+	// GraphRepos.User 走真实 Neo4j：employee.Get 跨源 join 与扫码登录关联都依赖它；无 driver 时降级
+	var userRepo UserGraphRepo = memUserRepo
+	if neo4jDriver != nil {
+		userRepo = neo4j_repo.NewNeo4jUserGraphRepo(neo4jDriver, neo4jDB)
+	}
 	return &Repositories{
 		Graph: &GraphRepos{
 			Device: deviceRepo,
 			User:   userRepo,
-			Group:  neo4j_repo.NewGroupGraphRepo(userRepo),
+			Group:  neo4j_repo.NewGroupGraphRepo(memUserRepo),
 		},
 		Sync: &SyncRepos{
 			Employee:     pg_repo.NewEmployeeRepository(db),

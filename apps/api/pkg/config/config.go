@@ -15,6 +15,7 @@ type Config struct {
 	Postgres Postgres `yaml:"postgres"`
 	Neo4j    Neo4j    `yaml:"neo4j"`
 	JWT      JWT      `yaml:"jwt"`
+	Lark     Lark     `yaml:"lark"`
 }
 
 type JWT struct {
@@ -71,8 +72,18 @@ func Load(path string) (*Config, error) {
 
 // decryptSecrets 对配置中的密码字段进行解密。
 // 已加密（base64 密文）的字段自动解密；明文字段原样通过，无需任何前缀标记。
+// Lark 飞书应用配置，包含基础凭据和 OAuth 参数。
+type Lark struct {
+	AppID          string `yaml:"app_id"`
+	AppSecret      string `yaml:"app_secret"`
+	OAuthRedirect  string `yaml:"oauth_redirect_uri"` // 飞书回调 URL，指向 Next.js /api/auth/callback
+	InternalSecret string `yaml:"internal_secret"`    // Next.js 服务端调 Go API 内部接口时的共享密钥
+}
+
 func (c *Config) decryptSecrets() {
 	c.Postgres.Password = crypto.TryDecrypt(c.Postgres.Password)
 	c.Neo4j.Password = crypto.TryDecrypt(c.Neo4j.Password)
 	c.JWT.Secret = crypto.TryDecrypt(c.JWT.Secret)
+	c.Lark.AppSecret = crypto.TryDecrypt(c.Lark.AppSecret)
+	c.Lark.InternalSecret = crypto.TryDecrypt(c.Lark.InternalSecret)
 }

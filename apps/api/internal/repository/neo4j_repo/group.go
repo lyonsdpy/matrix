@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"matrix/api/domain"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 type GroupGraphRepo struct {
@@ -50,10 +52,10 @@ func (r *GroupGraphRepo) ListGroups(_ context.Context, first int, _ string) ([]*
 	return all[:first], true, all[first-1].ID, nil
 }
 
-func (r *GroupGraphRepo) GreateGroup(_ context.Context, name string) (*domain.Group, error) {
+func (r *GroupGraphRepo) CreateGroup(_ context.Context, name string) (*domain.Group, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	id := fmt.Sprintf("grp-%d", len(r.groups)+1)
+	id := uuid.New().String()
 	g := &domain.Group{ID: id, Name: name}
 	r.groups[id] = g
 	return g, nil

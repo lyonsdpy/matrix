@@ -7,7 +7,7 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 )
 
-// InitSchema 在 Neo4j 里创建 Device 节点的约束和索引。
+// InitSchema 在 Neo4j 里创建 Device / User 节点的约束和索引。
 // IF NOT EXISTS 保证幂等，重复调用不会报错。
 func InitSchema(ctx context.Context, driver neo4j.Driver, dbName string) error {
 	stmts := []string{
@@ -16,6 +16,8 @@ func InitSchema(ctx context.Context, driver neo4j.Driver, dbName string) error {
 		// 按管理 IP 查询是高频操作，单独加索引
 		`CREATE INDEX device_mip_idx IF NOT EXISTS FOR (d:Device) ON (d.mip)`,
 		`CREATE INDEX device_name_idx IF NOT EXISTS FOR (d:Device) ON (d.name)`,
+		// User 节点以 feishu_id（open_id）为业务唯一键，同步与登录关联均依赖它
+		`CREATE CONSTRAINT user_feishu_id_unique IF NOT EXISTS FOR (u:User) REQUIRE u.feishu_id IS UNIQUE`,
 	}
 	for _, stmt := range stmts {
 		_, err := neo4j.ExecuteQuery(ctx, driver, stmt, nil,

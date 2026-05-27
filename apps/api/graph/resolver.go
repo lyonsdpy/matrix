@@ -15,10 +15,15 @@ package graph
 
 import "matrix/api/internal/service"
 
-type Resolver struct {
-	deviceSvc *service.DeviceService
+// Deps 汇聚 Resolver 所需的所有 Service 依赖，新增服务只需在此加字段，NewResolver 签名不变。
+type Deps struct {
+	DeviceSvc *service.DeviceService
 }
 
-func NewResolver(deviceSvc *service.DeviceService) *Resolver {
-	return &Resolver{deviceSvc: deviceSvc}
+type Resolver struct {
+	deps Deps
+}
+
+func NewResolver(deps Deps) *Resolver {
+	return &Resolver{deps: deps}
 }

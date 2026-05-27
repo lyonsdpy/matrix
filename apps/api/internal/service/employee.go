@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"matrix/api/domain"
 	"matrix/api/internal/repository/pg_repo"
 )
+
+// ErrNotFound 业务实体不存在，handler 层应映射为 404。
+var ErrNotFound = errors.New("not found")
 
 // EmployeeView 跨源聚合视图：PG 同步数据 + 图中 User 节点。
 // 仅用于读接口的响应，不存储。
@@ -53,7 +57,7 @@ func (s *EmployeeService) Get(ctx context.Context, id string) (*EmployeeView, er
 		return nil, fmt.Errorf("employee.Get: pg lookup: %w", err)
 	}
 	if emp == nil {
-		return nil, fmt.Errorf("employee %s: not found", id)
+		return nil, fmt.Errorf("employee %s: %w", id, ErrNotFound)
 	}
 
 	user, err := s.graphRepo.FindByFeishuID(ctx, emp.ExternalID)

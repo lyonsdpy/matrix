@@ -3,11 +3,12 @@ package lark
 
 // User 飞书用户模型（组织架构同步用）。
 type User struct {
-	UserID        string   // 租户内唯一用户 ID
+	UserID        string   // 租户内唯一用户 ID（user_id）
+	OpenID        string   // 应用内唯一标识（open_id），与 OAuth 扫码登录的关联键对齐
 	Name          string   // 用户姓名
 	Email         string   // 邮箱
 	Mobile        string   // 手机号
-	Status        int      // 用户状态（1=已激活, 2=已禁用, 4=未激活等）
+	Status        int      // 在职状态（1=在职, 2=已冻结, 3=离职, 4=待入职, 0=未知）
 	DepartmentIDs []string // 所属部门 ID 列表
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"time"
 
+	"matrix/api/internal/infra/lark"
 	"matrix/api/internal/repository"
 	"matrix/api/pkg/config"
 )
@@ -19,20 +20,39 @@ type Services struct {
 	Device   *DeviceService
 	Employee *EmployeeService
 	Auth     *AuthService
+	User     *UserService
+}
+
+// Shutdown 停止所有后台 goroutine，应在服务器 Stop 之前调用。
+func (s *Services) Shutdown() {
+	s.Task.Stop()
 }
 
 // New 初始化所有 Service，由 main 调用一次，注入到 Handler 层。
 // 依赖方向：main → Handler → Service → Repository，单向，不允许反向依赖。
-func New(repos *repository.Repositories, jwtCfg config.JWT) *Services {
+func New(repos *repository.Repositories, jwtCfg config.JWT, larkCfg config.Lark) *Services {
 	expiry := time.Duration(jwtCfg.ExpiryHours) * time.Hour
 	if expiry <= 0 {
 		expiry = 24 * time.Hour
 	}
+
+	var larkOAuth *lark.OAuthProvider
+	if larkCfg.AppID != "" {
+		larkClient, err := lark.NewClient(lark.Config{
+			AppID:     larkCfg.AppID,
+			AppSecret: larkCfg.AppSecret,
+		})
+		if err == nil {
+			larkOAuth = lark.NewOAuthProvider(larkClient, larkCfg.AppID, larkCfg.OAuthRedirect)
+		}
+	}
+
 	return &Services{
 		Hello:    &helloSvc{repo: repos.Hello},
 		Task:     newTaskSvc(repos.Task),
 		Device:   NewDeviceService(repos.Graph.Device),
 		Employee: NewEmployeeService(repos.Sync.Employee, repos.Graph.User),
-		Auth:     NewAuthService(repos.Sync.AuthUser, jwtCfg.Secret, expiry),
+		Auth:     NewAuthService(repos.Sync.AuthUser, larkOAuth, jwtCfg.Secret, expiry),
+		User:     NewUserService(repos.Graph.User),
 	}
 }

@@ -23,14 +23,17 @@ type TaskService interface {
 	DisableTask(id string) (*model.Task, error)
 	// RunNow 立即触发一次采集，不等待下一个周期
 	RunNow(id string) error
+	// Stop 停止后台调度器，优雅关闭时调用
+	Stop()
 }
 
 type taskSvc struct {
-	repo repository.TaskRepository
+	repo   repository.TaskRepository
+	stopCh chan struct{}
 }
 
 func newTaskSvc(repo repository.TaskRepository) TaskService {
-	svc := &taskSvc{repo: repo}
+	svc := &taskSvc{repo: repo, stopCh: make(chan struct{})}
 	go svc.scheduler()
 	return svc
 }
@@ -119,13 +122,21 @@ func (s *taskSvc) RunNow(id string) error {
 	return nil
 }
 
-// scheduler 后台调度循环，每秒检查一次到期任务。
-// 在服务启动时通过 goroutine 运行，进程退出时自然终止。
+func (s *taskSvc) Stop() {
+	close(s.stopCh)
+}
+
+// scheduler 后台调度循环，每秒检查一次到期任务，直到 Stop() 被调用。
 func (s *taskSvc) scheduler() {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		s.tick()
+	for {
+		select {
+		case <-ticker.C:
+			s.tick()
+		case <-s.stopCh:
+			return
+		}
 	}
 }
 

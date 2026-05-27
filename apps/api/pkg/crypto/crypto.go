@@ -24,18 +24,23 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
 )
 
-// configKeyHex 是 AES-256 密钥的十六进制编码（32 字节 = 64 个十六进制字符）。
-// 生产部署时应通过构建注入（ldflags -X）或直接替换此常量，不要提交到公共仓库。
-const configKeyHex = "a3f8c2d9e6b7a4f1c8d5e2b9a6f3c0d7e4b1a8f5c2d9e6b3a0f7c4d1e8b5a2f9"
+// defaultKeyHex 是开发环境使用的默认密钥。
+// 生产部署必须通过环境变量 MATRIX_CRYPTO_KEY（64 位十六进制字符串）覆盖此值。
+const defaultKeyHex = "a3f8c2d9e6b7a4f1c8d5e2b9a6f3c0d7e4b1a8f5c2d9e6b3a0f7c4d1e8b5a2f9"
 
 var configKey []byte
 
 func init() {
-	key, err := hex.DecodeString(configKeyHex)
+	keyHex := os.Getenv("MATRIX_CRYPTO_KEY")
+	if keyHex == "" {
+		keyHex = defaultKeyHex
+	}
+	key, err := hex.DecodeString(keyHex)
 	if err != nil || len(key) != 32 {
-		panic(fmt.Sprintf("crypto: invalid configKeyHex (must be 64 hex chars): %v", err))
+		panic(fmt.Sprintf("crypto: MATRIX_CRYPTO_KEY must be 64 hex chars: %v", err))
 	}
 	configKey = key
 }

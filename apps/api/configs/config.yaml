@@ -27,3 +27,9 @@ jwt:
   secret:        "matrix-jwt-secret-change-in-production"
   expiry_hours:  24
   secure_cookie: false   # 生产环境改为 true（HTTPS only）
+
+lark:
+  app_id:             "cli_a90810d764b8dbd2"                     # 飞书应用 App ID
+  app_secret:         "kovtVQ1RAN39oXY7O8fOAjXDWoPwav2FL8W5cYW+N/Nn4S6hr+M2SXV4PO2/y2rHu4itPGBszbAsAidI"  # AES 加密
+  oauth_redirect_uri: "http://localhost:3000/api/auth/callback"  # 必须与飞书开放平台配置一致
+  internal_secret:    "GNGGMN84Y5JAw4I07EnL+h5Uq+XGTdmWoP1f3XxhUVPG1tqcJtM="  # AES 加密，与前端 INTERNAL_SECRET 一致
