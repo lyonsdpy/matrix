@@ -15,7 +15,8 @@ export default function DashboardLayout({
           Matrix
         </div>
         <nav className="flex-1 space-y-1 px-3 py-2">
-          <NavItem href="/users" label="用户管理" />
+          <NavItem href="/contacts" label="通讯录管理" />
+          <NavItem href="/endpoints" label="终端管理" />
         </nav>
       </aside>
 

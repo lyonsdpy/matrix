@@ -359,7 +359,7 @@ func convertDeviceChangeEvent(e *larksecurity.DeviceChangeEvent) Device {
 		dev.Platform = fmt.Sprintf("%d", *e.DeviceSystem)
 	}
 	if e.CurrentUserId != nil && e.CurrentUserId.UserId != nil {
-		dev.UserID = *e.CurrentUserId.UserId
+		dev.CurrentUserID = *e.CurrentUserId.UserId
 	}
 	if e.DeviceOwnership != nil {
 		dev.Status = fmt.Sprintf("%d", *e.DeviceOwnership)

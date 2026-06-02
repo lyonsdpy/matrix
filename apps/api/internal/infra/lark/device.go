@@ -4,6 +4,7 @@ package lark
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	larksecurity "github.com/larksuite/oapi-sdk-go/v3/service/security_and_compliance/v2"
 	"go.uber.org/zap"
@@ -92,7 +93,33 @@ func (f *deviceFetcher) GetDevice(ctx context.Context, deviceID string) (*Device
 	return &d, nil
 }
 
+// placeholderValues 飞书 device_record 字段缺值时回填的占位字符串集合。
+// 设备没上报真实硬件标识（iOS/Android 隐私限制、未授权 MDM 等）时，飞书会返回这些字面量。
+// 写入 Neo4j 之前统一过滤为空串，前端就能正常显示 "—"。
+// 注意：判定时已经 ToLower 比较，所以这里的 key 都用小写。
+var placeholderValues = map[string]struct{}{
+	"default string":      {}, // 通用占位
+	"unknown":             {},
+	"00000000-0000-0000-0000-000000000000": {}, // UUID 默认
+	"00:00:00:00:00:00":   {}, // MAC 默认
+}
+
+func sanitizeField(s string) string {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return ""
+	}
+	if _, ok := placeholderValues[strings.ToLower(t)]; ok {
+		return ""
+	}
+	return t
+}
+
 // convertDevice 将 SDK DeviceRecord 转换为 Device。
+// 飞书原始字段：https://open.feishu.cn/document/security_and_compliance-v1/security_and_compliance-v2/device_record/list
+// device_system / device_terminal_type / device_status / device_ownership / certification_level
+// 都是整数编号，这里统一以 string 存储原始编号，前端做枚举翻译。
+// 硬件标识字段（serial/uuid/mac 等）经 sanitizeField 过滤已知占位值。
 func convertDevice(d *larksecurity.DeviceRecord) Device {
 	if d == nil {
 		return Device{}
@@ -108,17 +135,50 @@ func convertDevice(d *larksecurity.DeviceRecord) Device {
 		dev.Platform = fmt.Sprintf("%d", *d.DeviceTerminalType)
 	}
 	if d.CurrentUserId != nil {
-		dev.UserID = *d.CurrentUserId
+		dev.CurrentUserID = *d.CurrentUserId
+	}
+	if d.LatestUserId != nil {
+		dev.LatestUserID = *d.LatestUserId
 	}
 	if d.DeviceStatus != nil {
 		dev.TrustLevel = fmt.Sprintf("%d", *d.DeviceStatus)
 	}
 	if d.DeviceOwnership != nil {
-		dev.Status = fmt.Sprintf("%d", *d.DeviceOwnership)
+		dev.Ownership = fmt.Sprintf("%d", *d.DeviceOwnership)
+		dev.Status = dev.Ownership // 兼容旧字段
+	}
+	if d.CertificationLevel != nil {
+		dev.Certification = fmt.Sprintf("%d", *d.CertificationLevel)
 	}
 	if d.SerialNumber != nil {
-		dev.SerialNumber = *d.SerialNumber
+		dev.SerialNumber = sanitizeField(*d.SerialNumber)
 	}
-	// OSVersion 和 LastOnlineTime 在 SDK 响应中不可用，保持零值
+	if d.DiskSerialNumber != nil {
+		dev.DiskSerialNumber = sanitizeField(*d.DiskSerialNumber)
+	}
+	if d.Uuid != nil {
+		dev.BoardUUID = sanitizeField(*d.Uuid)
+	}
+	if d.MacAddress != nil {
+		dev.MACAddress = sanitizeField(*d.MacAddress)
+	}
+	if d.Model != nil {
+		dev.Model = sanitizeField(*d.Model)
+	}
+	if d.DeviceSystem != nil {
+		dev.OSCode = fmt.Sprintf("%d", *d.DeviceSystem)
+	}
+	if d.Version != nil {
+		dev.Version = sanitizeField(*d.Version)
+	}
+	if d.IsManaged != nil {
+		dev.IsManaged = *d.IsManaged
+	}
+	if d.MdmDeviceId != nil {
+		dev.MDMDeviceID = sanitizeField(*d.MdmDeviceId)
+	}
+	if d.MdmProviderName != nil {
+		dev.MDMProvider = sanitizeField(*d.MdmProviderName)
+	}
 	return dev
 }

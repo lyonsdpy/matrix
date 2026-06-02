@@ -23,16 +23,32 @@ type Department struct {
 }
 
 // Device 飞书安全合规设备模型。
+// CurrentUserID/LatestUserID 都是飞书 user_id；二者可能不同，业务上
+// 当前登录(Current)和最近一次登录(Latest)用两种关系边分别表达。
 type Device struct {
-	DeviceID       string // 设备 ID
-	DeviceName     string // 设备名称
-	Platform       string // 平台（Windows/Mac/Android/iOS 等）
-	UserID         string // 设备归属用户
-	Status         string // 设备状态
-	TrustLevel     string // 可信级别
-	SerialNumber   string // 生产序列号
-	OSVersion      string // 操作系统版本
-	LastOnlineTime int64  // 最后在线时间（Unix 时间戳）
+	DeviceID         string // 设备 ID（device_record_id）
+	DeviceName       string // 设备名称
+	Platform         string // 终端类型编号（1=Win/2=Mac/3=Linux/4=iOS/5=Android）
+	CurrentUserID    string // 当前登录用户 ID（飞书 user_id）
+	LatestUserID     string // 最近登录用户 ID（飞书 user_id）
+	Ownership        string // device_ownership 原始编号（1/2 公司/个人）
+	TrustLevel       string // device_status 原始编号（可信状态）
+	Certification    string // certification_level 原始编号（认证方式）
+	SerialNumber     string // 生产序列号
+	DiskSerialNumber string // 硬盘序列号
+	BoardUUID        string // 主板 UUID
+	MACAddress       string // MAC 地址
+	Model            string // 设备型号
+	OSCode           string // device_system 原始编号（操作系统）
+	Version          string // 版本号
+	IsManaged        bool   // 是否为受管控设备
+	MDMDeviceID      string // MDM 设备 ID
+	MDMProvider      string // MDM 厂商名称
+	LastOnlineTime   int64  // 最后在线时间（Unix 时间戳）
+
+	// Status / OSVersion 保留旧字段以兼容历史调用方；新代码请使用 Ownership / OSCode。
+	Status    string
+	OSVersion string
 }
 
 // Message 飞书消息模型（收发通用）。

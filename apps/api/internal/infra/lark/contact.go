@@ -4,10 +4,13 @@ package lark
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	larkcontact "github.com/larksuite/oapi-sdk-go/v3/service/contact/v3"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // ContactFetcher 通讯录全量拉取能力。
@@ -18,8 +21,10 @@ type ContactFetcher interface {
 	// FetchDepartmentUsers 获取指定部门的直属用户列表（分页全量）。
 	FetchDepartmentUsers(ctx context.Context, departmentID string) ([]User, error)
 
-	// FetchAllUsers 递归获取所有部门下的所有用户（去重）。
-	FetchAllUsers(ctx context.Context) ([]User, error)
+	// FetchUsersInDepartments 并发逐部门拉取直属用户并去重，返回这些部门下的全部用户。
+	// 由调用方传入部门 ID 列表（通常来自 FetchAllDepartments），避免内部重复遍历部门。
+	// opts.Workers 控制并发度（默认 8），opts.OnProgress 每完成一个部门触发一次回调（done/total）。
+	FetchUsersInDepartments(ctx context.Context, deptIDs []string, opts FetchUsersOptions) ([]User, error)
 
 	// GetUser 获取单个用户详情。
 	GetUser(ctx context.Context, userID string) (*User, error)
@@ -29,8 +34,17 @@ type ContactFetcher interface {
 }
 
 // larkRateLimit 飞书 API 调用间隔，避免触发 code=99991400 频率限制。
-// 飞书企业版通讯录 API 限速约 100 QPS；150ms 约 6.7 QPS，安全边际充足。
+// 飞书企业版通讯录 API 限速约 100 QPS；并发场景下每个 worker 内仍保留 150ms 间隔，
+// 8 worker × ~6.7 QPS ≈ 53 QPS，留出 ~50% 安全边际。
 const larkRateLimit = 150 * time.Millisecond
+
+// FetchUsersOptions 拉取用户阶段的并发与进度选项。零值表示用默认（Workers=8、无回调）。
+type FetchUsersOptions struct {
+	Workers    int                       // 并发 worker 数；<=0 取默认 8
+	OnProgress func(done, total int)     // 完成一个部门触发一次；可为 nil
+}
+
+const defaultFetchUsersWorkers = 8
 
 // contactFetcher 实现 ContactFetcher。
 type contactFetcher struct {
@@ -46,66 +60,49 @@ func NewContactFetcher(client *Client, logger *zap.Logger) ContactFetcher {
 	return &contactFetcher{client: client, logger: logger}
 }
 
-// FetchAllDepartments 从根部门递归获取所有部门（BFS）。
-// 每次 API 调用之间等待 larkRateLimit，避免触发飞书频率限制。
-// 单个部门子节点拉取失败时 warn+continue，不中断整体遍历。
+// FetchAllDepartments 用 fetch_child=true 对根部门 "0" 一次性递归拉取全部子孙部门（分页）。
+// 飞书该参数返回所有层级子部门，请求数从逐层 BFS 的 O(部门数) 降到 O(部门数/页大小)，
+// 大型集团（数千部门）由数千次请求降到数十次。每页之间等待 larkRateLimit 避免触发频率限制。
 func (f *contactFetcher) FetchAllDepartments(ctx context.Context) ([]Department, error) {
 	var result []Department
-	queue := []string{"0"} // 从根部门 "0" 开始
+	var pageToken string
 
-	for len(queue) > 0 {
-		deptID := queue[0]
-		queue = queue[1:]
+	for {
+		time.Sleep(larkRateLimit)
 
-		var pageToken string
-		fetchFailed := false
-		for {
-			time.Sleep(larkRateLimit)
+		req := larkcontact.NewChildrenDepartmentReqBuilder().
+			DepartmentId("0").
+			UserIdType("user_id").
+			DepartmentIdType("department_id").
+			FetchChild(true). // 递归返回所有层级子孙部门，无需逐层遍历
+			PageSize(50).
+			PageToken(pageToken).
+			Build()
 
-			req := larkcontact.NewChildrenDepartmentReqBuilder().
-				DepartmentId(deptID).
-				UserIdType("user_id").
-				DepartmentIdType("department_id").
-				PageSize(50).
-				PageToken(pageToken).
-				Build()
-
-			resp, err := f.client.Contact.Department.Children(ctx, req)
-			if err != nil {
-				f.logger.Warn("contact: fetch departments under dept, skipping",
-					zap.String("dept_id", deptID), zap.Error(err))
-				fetchFailed = true
-				break
-			}
-			if !resp.Success() {
-				f.logger.Warn("contact: fetch departments under dept, skipping",
-					zap.String("dept_id", deptID),
-					zap.Int("code", resp.Code), zap.String("msg", resp.Msg))
-				fetchFailed = true
-				break
-			}
-			if resp.Data == nil {
-				break
-			}
-
-			for _, dept := range resp.Data.Items {
-				d := convertDepartment(dept)
-				result = append(result, d)
-				if dept.DepartmentId != nil {
-					queue = append(queue, *dept.DepartmentId)
-				}
-			}
-
-			if resp.Data.HasMore == nil || !*resp.Data.HasMore {
-				break
-			}
-			if resp.Data.PageToken != nil {
-				pageToken = *resp.Data.PageToken
-			}
+		resp, err := f.client.Contact.Department.Children(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("contact: fetch all departments: %w", err)
 		}
-		_ = fetchFailed // 已通过 warn 记录，继续遍历队列中其余部门
+		if !resp.Success() {
+			return nil, fmt.Errorf("contact: fetch all departments: code=%d, msg=%s", resp.Code, resp.Msg)
+		}
+		if resp.Data == nil {
+			break
+		}
+
+		for _, dept := range resp.Data.Items {
+			result = append(result, convertDepartment(dept))
+		}
+
+		if resp.Data.HasMore == nil || !*resp.Data.HasMore {
+			break
+		}
+		if resp.Data.PageToken != nil {
+			pageToken = *resp.Data.PageToken
+		}
 	}
 
+	f.logger.Info("contact: all departments fetched", zap.Int("total", len(result)))
 	return result, nil
 }
 
@@ -151,34 +148,72 @@ func (f *contactFetcher) FetchDepartmentUsers(ctx context.Context, departmentID 
 	return result, nil
 }
 
-// FetchAllUsers 遍历所有部门，逐部门拉取直属用户并去重，返回全公司用户列表。
+// FetchUsersInDepartments 并发逐部门拉取直属用户并按 user_id 去重。
 // SDK v3.5.3 的 FindByDepartmentUserReqBuilder 不支持递归模式（fetch_user_type=2），
-// 因此通过先 FetchAllDepartments 再逐部门请求来保证全量获取。
-func (f *contactFetcher) FetchAllUsers(ctx context.Context) ([]User, error) {
-	depts, err := f.FetchAllDepartments(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("contact: fetch all users, list depts: %w", err)
+// 故仍需逐部门请求；通过 worker pool 把原本串行的 sleep 累加变成并发，整体耗时从
+// 部门数 × 150ms 降到 (部门数 / Workers) × 150ms，本项目 2k+ 部门由 ~300s 降到 ~40s。
+//
+// 单部门内的分页仍然串行（飞书要求按 PageToken 顺序），仅跨部门并发。
+func (f *contactFetcher) FetchUsersInDepartments(ctx context.Context, deptIDs []string, opts FetchUsersOptions) ([]User, error) {
+	workers := opts.Workers
+	if workers <= 0 {
+		workers = defaultFetchUsersWorkers
 	}
+	total := len(deptIDs)
 
-	seen := make(map[string]struct{}, len(depts)*10)
-	var result []User
+	var (
+		mu     sync.Mutex
+		seen   = make(map[string]struct{}, total*10)
+		result []User
+		done   atomic.Int64
+	)
 
-	for _, dept := range depts {
-		deptUsers, err := f.FetchDepartmentUsers(ctx, dept.DepartmentID)
-		if err != nil {
-			f.logger.Warn("contact: fetch all users, skip dept",
-				zap.String("dept_id", dept.DepartmentID), zap.Error(err))
-			continue
-		}
-		for _, u := range deptUsers {
-			if _, dup := seen[u.UserID]; !dup {
-				seen[u.UserID] = struct{}{}
-				result = append(result, u)
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(workers)
+
+	for _, deptID := range deptIDs {
+		deptID := deptID
+		g.Go(func() error {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
-		}
+			users, err := f.FetchDepartmentUsers(ctx, deptID)
+			if err != nil {
+				// 单个部门拉失败不熔断整体（多年实践：偶发 99991400 重试也救不回，跳过更稳）
+				f.logger.Warn("contact: fetch users in departments, skip dept",
+					zap.String("dept_id", deptID), zap.Error(err))
+				users = nil
+			}
+			if len(users) > 0 {
+				mu.Lock()
+				for _, u := range users {
+					if _, dup := seen[u.UserID]; !dup {
+						seen[u.UserID] = struct{}{}
+						result = append(result, u)
+					}
+				}
+				mu.Unlock()
+			}
+			completed := done.Add(1)
+			if opts.OnProgress != nil {
+				opts.OnProgress(int(completed), total)
+			}
+			if completed%200 == 0 {
+				f.logger.Info("contact: users fetch progress",
+					zap.Int64("departments_done", completed),
+					zap.Int("departments_total", total))
+			}
+			return nil
+		})
 	}
 
-	f.logger.Info("contact: fetch all users completed", zap.Int("total", len(result)))
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("contact: fetch users in departments: %w", err)
+	}
+
+	f.logger.Info("contact: fetch users in departments completed",
+		zap.Int("departments_total", total),
+		zap.Int("users_collected", len(result)))
 	return result, nil
 }
 

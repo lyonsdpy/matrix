@@ -3,6 +3,7 @@ package lark
 
 import (
 	"errors"
+	"time"
 
 	larkSDK "github.com/larksuite/oapi-sdk-go/v3"
 )
@@ -24,5 +25,7 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.AppID == "" || cfg.AppSecret == "" {
 		return nil, ErrMissingCredentials
 	}
-	return larkSDK.NewClient(cfg.AppID, cfg.AppSecret), nil
+	// 设置单次请求超时，避免飞书 API 偶发挂起导致整个同步无限阻塞。
+	return larkSDK.NewClient(cfg.AppID, cfg.AppSecret,
+		larkSDK.WithReqTimeout(30*time.Second)), nil
 }

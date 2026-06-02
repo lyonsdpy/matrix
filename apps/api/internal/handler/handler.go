@@ -74,8 +74,28 @@ func (h *Handler) Register(r *gin.Engine) {
 
 		v1.GET("/employees/:id", h.GetEmployee)
 
-		// 已同步飞书用户列表（搜索 + 游标分页）
+		// 通讯录-用户列表（搜索 + 游标分页）
 		v1.GET("/users", h.ListUsers)
+		// 通讯录-用户详情(by open_id)：基本信息 + 部门(带路径) + 同事
+		v1.GET("/users/:id", h.GetUserDetail)
+
+		// 通讯录-部门详情：基本信息 + 路径 + 子部门 + 直属成员 + 递归人数
+		v1.GET("/departments/:id", h.GetDepartmentDetail)
+
+		// 终端管理-列表 + 详情（按设备名/序列号 + 关联用户筛选）
+		v1.GET("/endpoints", h.ListEndpoints)
+		v1.GET("/endpoints/:id", h.GetEndpoint)
+		// 终端管理-独立同步（飞书设备 → Endpoint 节点 + CURRENT_LOGIN/LATEST_LOGIN 边）
+		v1.POST("/endpoints/sync/start", h.StartEndpointSync)
+		v1.GET("/endpoints/sync/progress", h.GetEndpointSyncProgress)
+
+		// 通讯录-部门树懒加载(parent="" 顶级)
+		v1.GET("/contacts/tree", h.ListDepartmentChildren)
+		// 通讯录-联合搜索(用户 + 部门)
+		v1.GET("/contacts/search", h.SearchContacts)
+		// 通讯录-触发飞书同步 / 查询同步进度
+		v1.POST("/contacts/sync/start", h.StartContactSync)
+		v1.GET("/contacts/sync/progress", h.GetContactSyncProgress)
 	}
 
 	// 内部接口：仅供 Next.js 服务端调用，通过 X-Internal-Secret 鉴权，不走 JWT 中间件

@@ -7,6 +7,7 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v6/neo4j"
 
 	"matrix/api/domain"
+	"matrix/api/internal/infra/lark"
 	"matrix/api/internal/repository/neo4j_repo"
 	"matrix/api/internal/repository/pg_repo"
 )
@@ -33,6 +34,58 @@ type UserGraphRepo interface {
 	// SearchSyncedUsers 按 name/email 模糊搜索已同步用户，游标分页（cursor 为 feishu_id）。
 	// 返回完整飞书字段，供用户管理列表展示。
 	SearchSyncedUsers(ctx context.Context, search, cursor string, limit int) ([]*domain.SyncedUser, bool, string, error)
+	// GetSyncedUserDetail 按 open_id 取用户详情：基本字段 + 所属部门(带完整路径)。
+	GetSyncedUserDetail(ctx context.Context, openID string) (*domain.UserDetail, error)
+	// GetLeaders 上级领导：所属部门沿 PARENT_OF 链向上，跳过自己当 leader 的部门后取首个非自己的 leader，去重。
+	GetLeaders(ctx context.Context, openID string, limit int) ([]*domain.SyncedUser, error)
+	// GetManagedDepartments 管理部门：leader_user_id == 本人 user_id 的部门列表。
+	GetManagedDepartments(ctx context.Context, openID string) ([]*domain.DepartmentRef, error)
+	// SearchUsersByKeyword name/email 模糊匹配，供联合搜索使用。
+	SearchUsersByKeyword(ctx context.Context, q string, limit int) ([]*domain.SyncedUser, error)
+
+	// ── sync 同步用：批量写、全 ID 列表、批量删 ──
+	BulkUpsertSyncedUsers(ctx context.Context, batch []lark.User) error
+	ListAllFeishuIDs(ctx context.Context) (map[string]struct{}, error)
+	DeleteByFeishuIDs(ctx context.Context, ids []string) (int, error)
+}
+
+// DepartmentGraphRepo Department 节点的图能力：写入 + 树/路径/递归人数/直属成员等图特性查询。
+type DepartmentGraphRepo interface {
+	Upsert(ctx context.Context, d lark.Department) error
+	LinkParent(ctx context.Context, deptID, parentID string) error
+	LinkUser(ctx context.Context, userFeishuID string, deptIDs []string) error
+
+	ListChildren(ctx context.Context, parentID string) ([]*domain.DepartmentNode, error)
+	GetDetail(ctx context.Context, deptID string, memberLimit int) (*domain.DepartmentDetail, error)
+	GetPath(ctx context.Context, deptID string) ([]*domain.DepartmentRef, error)
+	RecursiveMemberCount(ctx context.Context, deptID string) (int, error)
+	ListDirectMembers(ctx context.Context, deptID string, limit int) ([]*domain.SyncedUser, error)
+	SearchByName(ctx context.Context, q string, limit int) ([]*domain.DepartmentNode, error)
+
+	// ── sync 同步用：批量 ──
+	BulkUpsert(ctx context.Context, batch []lark.Department) error
+	BulkLinkParents(ctx context.Context, batch []lark.Department) error
+	BulkLinkMembers(ctx context.Context, batch []lark.User) error
+	ListAllIDs(ctx context.Context) (map[string]struct{}, error)
+	DeleteByIDs(ctx context.Context, ids []string) (int, error)
+}
+
+// EndpointGraphRepo 终端节点图能力。
+// Endpoint 与 User 通过两种边关联：
+//   - (Endpoint)-[:CURRENT_LOGIN]->(User)  当前登录用户
+//   - (Endpoint)-[:LATEST_LOGIN]->(User)   最近一次登录用户
+// 语义都是"登录"而非"归属"；归属由后续资产管理系统维护。
+type EndpointGraphRepo interface {
+	BulkUpsert(ctx context.Context, batch []lark.Device) error
+	BulkLinkLogin(ctx context.Context, batch []lark.Device) error
+	ListAllFeishuDeviceIDs(ctx context.Context) (map[string]struct{}, error)
+	DeleteByFeishuDeviceIDs(ctx context.Context, ids []string) (int, error)
+
+	// Search 终端列表：q=设备名/序列号模糊；userQ=按关联用户(current 或 latest)姓名/邮箱筛选；
+	// typeFilter/osFilter=按物理形态/操作系统精确匹配（空字符串视为不筛）；cursor=feishu_device_id。
+	Search(ctx context.Context, q, userQ, typeFilter, osFilter, cursor string, limit int) ([]*domain.SyncedEndpoint, bool, string, error)
+	// GetDetail 按节点 id 取终端 + 关联用户。
+	GetDetail(ctx context.Context, id string) (*domain.SyncedEndpoint, error)
 }
 
 type GroupGraphRepo interface {
@@ -48,9 +101,11 @@ type GroupGraphRepo interface {
 
 // GraphRepos 图数据库中的 domain 数据。
 type GraphRepos struct {
-	Device DeviceGraphRepo
-	User   UserGraphRepo
-	Group  GroupGraphRepo
+	Device     DeviceGraphRepo
+	User       UserGraphRepo
+	Group      GroupGraphRepo
+	Department DepartmentGraphRepo
+	Endpoint   EndpointGraphRepo
 }
 
 // SyncRepos 从外部系统同步过来、存储在 PostgreSQL 的数据，以及本地 auth 账号体系。
@@ -92,11 +147,23 @@ func New(db *sqlx.DB, neo4jDriver neo4j.Driver, neo4jDB string) *Repositories {
 	if neo4jDriver != nil {
 		userRepo = neo4j_repo.NewNeo4jUserGraphRepo(neo4jDriver, neo4jDB)
 	}
+	// Department 走真实 Neo4j：通讯录树/路径/递归人数全靠它；无 driver 时降级为 stub
+	var deptRepo DepartmentGraphRepo = neo4j_repo.NewStubDepartmentRepo()
+	if neo4jDriver != nil {
+		deptRepo = neo4j_repo.NewNeo4jDepartmentRepo(neo4jDriver, neo4jDB)
+	}
+	// Endpoint：飞书设备同步专用；无 driver 时降级为 stub
+	var endpointRepo EndpointGraphRepo = neo4j_repo.NewStubEndpointRepo()
+	if neo4jDriver != nil {
+		endpointRepo = neo4j_repo.NewNeo4jEndpointRepo(neo4jDriver, neo4jDB)
+	}
 	return &Repositories{
 		Graph: &GraphRepos{
-			Device: deviceRepo,
-			User:   userRepo,
-			Group:  neo4j_repo.NewGroupGraphRepo(memUserRepo),
+			Device:     deviceRepo,
+			User:       userRepo,
+			Group:      neo4j_repo.NewGroupGraphRepo(memUserRepo),
+			Department: deptRepo,
+			Endpoint:   endpointRepo,
 		},
 		Sync: &SyncRepos{
 			Employee:     pg_repo.NewEmployeeRepository(db),
