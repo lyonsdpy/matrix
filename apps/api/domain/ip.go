@@ -1,5 +1,9 @@
 package domain
 
+type IPv4Cidr struct {
+	ID string `json:"id"`
+}
+
 type IPv4Addr struct {
 	ID        string `json:"id"`
 	IP        string `json:"address"`

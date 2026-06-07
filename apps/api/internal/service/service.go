@@ -27,6 +27,10 @@ type Services struct {
 	Endpoint     *EndpointService
 	Sync         *SyncService
 	EndpointSync *EndpointSyncService
+	Permission   *PermissionService
+	Role         *RoleService
+	LoginGuard   *LoginGuard
+	ACG          *ACGService
 }
 
 // Shutdown 停止所有后台 goroutine，应在服务器 Stop 之前调用。
@@ -76,5 +80,10 @@ func New(repos *repository.Repositories, jwtCfg config.JWT, larkCfg config.Lark)
 			repos.Graph.Department,
 		),
 		EndpointSync: NewEndpointSyncService(deviceFetcher, repos.Graph.Endpoint),
+		Permission:   NewPermissionService(repos.Sync.Permission, repos.Sync.UserRole),
+		Role:         NewRoleService(repos.Sync.Role, repos.Sync.UserRole, repos.Sync.Permission, repos.Sync.AuthUser),
+		LoginGuard:   NewLoginGuard(repos.Sync.LoginAttempt),
+		// ACG 终端检查超时 2s，与原前端 fetch 超时一致，避免页面阻塞过久
+		ACG: NewACGService(2 * time.Second),
 	}
 }

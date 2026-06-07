@@ -82,8 +82,9 @@ type EndpointGraphRepo interface {
 	DeleteByFeishuDeviceIDs(ctx context.Context, ids []string) (int, error)
 
 	// Search 终端列表：q=设备名/序列号模糊；userQ=按关联用户(current 或 latest)姓名/邮箱筛选；
-	// typeFilter/osFilter=按物理形态/操作系统精确匹配（空字符串视为不筛）；cursor=feishu_device_id。
-	Search(ctx context.Context, q, userQ, typeFilter, osFilter, cursor string, limit int) ([]*domain.SyncedEndpoint, bool, string, error)
+	// typeFilter/osFilter=按物理形态/操作系统精确匹配（空字符串视为不筛）；
+	// offset/limit=分页参数；返回当页 endpoints 和命中总数 total。
+	Search(ctx context.Context, q, userQ, typeFilter, osFilter string, offset, limit int) ([]*domain.SyncedEndpoint, int64, error)
 	// GetDetail 按节点 id 取终端 + 关联用户。
 	GetDetail(ctx context.Context, id string) (*domain.SyncedEndpoint, error)
 }
@@ -120,6 +121,12 @@ type SyncRepos struct {
 	Blacklist    pg_repo.SoftwareBlacklistRepository
 	BlacklistHit pg_repo.BlacklistHitRepository
 	AuthUser     pg_repo.AuthUserRepository
+	// RBAC 角色权限体系
+	Permission pg_repo.PermissionRepository
+	Role       pg_repo.RoleRepository
+	UserRole   pg_repo.UserRoleRepository
+	// 账密登录暴破防护
+	LoginAttempt pg_repo.LoginAttemptRepository
 }
 
 // Repositories 聚合所有数据访问实例，由 main 初始化后注入 Service 层。
@@ -176,6 +183,10 @@ func New(db *sqlx.DB, neo4jDriver neo4j.Driver, neo4jDB string) *Repositories {
 			Blacklist:    pg_repo.NewBlacklistItemRepository(db),
 			BlacklistHit: pg_repo.NewBlacklistHitRepository(db),
 			AuthUser:     pg_repo.NewAuthUserRepository(db),
+			Permission:   pg_repo.NewPermissionRepository(db),
+			Role:         pg_repo.NewRoleRepository(db),
+			UserRole:     pg_repo.NewUserRoleRepository(db),
+			LoginAttempt: pg_repo.NewLoginAttemptRepository(db),
 		},
 		Hello: newHelloRepo(),
 		Task:  newTaskRepo(),

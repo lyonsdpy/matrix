@@ -3,24 +3,21 @@
 import { useEffect, useState } from "react";
 import type { EntityRef, SyncedEndpoint, SyncedUser } from "@/lib/types";
 
-// 飞书原始编号 → 中文标签。来源：
-// https://open.feishu.cn/document/security_and_compliance-v1/security_and_compliance-v2/device_record/list
-const PLATFORM_LABEL: Record<string, string> = {
-  "1": "Windows",
-  "2": "macOS",
-  "3": "Linux",
-  "4": "iOS",
-  "5": "Android",
+// 物理形态：与后端 EndpointType 枚举对齐（来自飞书 device_terminal_type）。
+const TYPE_LABEL: Record<string, string> = {
+  DESKTOP: "桌面端",
+  MOBILE: "移动端",
+  UNKNOWN: "未知",
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  PC: "电脑",
-  LAPTOP: "笔记本",
-  PRINTER: "打印机",
-  TV: "电视",
-  ATTENDANCE: "考勤机",
-  PHONE: "手机",
-  TABLET: "平板",
+// 操作系统：与后端 EndpointOS 枚举对齐。
+const OS_LABEL: Record<string, string> = {
+  WINDOWS: "Windows",
+  MACOS: "macOS",
+  LINUX: "Linux",
+  IOS: "iOS",
+  ANDROID: "Android",
+  HARMONYOS: "HarmonyOS",
   OTHER: "其他",
 };
 
@@ -69,7 +66,7 @@ export function EndpointDetail({
   if (data === null) return <div className="text-sm text-zinc-400">终端不存在</div>;
 
   const typeText = TYPE_LABEL[data.type] ?? data.type;
-  const platformText = PLATFORM_LABEL[data.platform_code];
+  const osText = OS_LABEL[data.os] ?? data.os;
   const ownership = OWNERSHIP_LABEL[data.ownership];
   const trust = TRUST_LABEL[data.trust_level];
   const cert = CERT_LABEL[data.certification];
@@ -86,7 +83,7 @@ export function EndpointDetail({
             <div className="break-all text-base font-semibold">{data.name || "—"}</div>
             <div className="mt-0.5 text-xs text-zinc-500">
               {typeText}
-              {platformText && <span className="ml-1">· {platformText}</span>}
+              {osText && <span className="ml-1">· {osText}</span>}
               {data.version && <span className="ml-1">· v{data.version}</span>}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -235,20 +232,10 @@ function mono(text: string) {
 
 function emojiForType(t: string): string {
   switch (t) {
-    case "PC":
+    case "DESKTOP":
       return "🖥";
-    case "LAPTOP":
-      return "💻";
-    case "PHONE":
+    case "MOBILE":
       return "📱";
-    case "TABLET":
-      return "📱";
-    case "PRINTER":
-      return "🖨";
-    case "TV":
-      return "📺";
-    case "ATTENDANCE":
-      return "🕘";
     default:
       return "🔌";
   }

@@ -24,6 +24,7 @@ import (
 	"matrix/api/pkg/auth"
 	"matrix/api/pkg/config"
 	"matrix/api/pkg/log"
+	"matrix/api/pkg/perm"
 )
 
 // ── 设备种子数据 ────────────────────────────────────────────────────────────
@@ -112,10 +113,16 @@ func main() {
 	}
 	log.Logger.Info("postgres migrations applied")
 
+	// 权限码权威列表同步（seed 也跑一次，保证 role_permissions 外键 ok）
+	if err := perm.SyncCatalog(ctx, db); err != nil {
+		log.Logger.Fatalf("sync permission catalog: %v", err)
+	}
+	log.Logger.Infof("permission catalog synced: %d codes", len(perm.Codes))
+
 	if err := seedPostgres(ctx, db); err != nil {
 		log.Logger.Fatalf("seed postgres: %v", err)
 	}
-	log.Logger.Infof("postgres: seeded %d departments, %d employees, admin user", len(deptSeeds), len(empSeeds))
+	log.Logger.Infof("postgres: seeded %d departments, %d employees, admin user, roles", len(deptSeeds), len(empSeeds))
 
 	// ── Neo4j ────────────────────────────────────────────────────────────────
 	driver, err := neo4jdb.Open(cfg.Neo4j)
@@ -154,6 +161,101 @@ func seedPostgres(ctx context.Context, db *sqlx.DB) error {
 	}
 	if err := seedAdminUser(ctx, userRepo); err != nil {
 		return fmt.Errorf("seed admin user: %w", err)
+	}
+	if err := seedRoles(ctx, db); err != nil {
+		return fmt.Errorf("seed roles: %w", err)
+	}
+	if err := seedUserRoles(ctx, db); err != nil {
+		return fmt.Errorf("seed user roles: %w", err)
+	}
+	return nil
+}
+
+// seedRoles 写入系统内置角色 admin / viewer。
+// admin 走中间件特判（不绑权限），viewer 绑全部 kind=page 权限码做"只读"角色。
+func seedRoles(ctx context.Context, db *sqlx.DB) error {
+	// 内置角色，is_system=true 不可删；ON CONFLICT 保证重跑幂等
+	roleSeeds := []struct {
+		code, name, desc string
+	}{
+		{perm.RoleCodeAdmin, "系统管理员", "拥有所有权限，受中间件特判绕过权限校验"},
+		{perm.RoleCodeViewer, "只读角色", "可查看所有页面，无操作权限"},
+	}
+	for _, r := range roleSeeds {
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO roles (code, name, description, is_system)
+			 VALUES ($1, $2, $3, TRUE)
+			 ON CONFLICT (code) DO UPDATE
+			   SET name = EXCLUDED.name, description = EXCLUDED.description, is_system = TRUE`,
+			r.code, r.name, r.desc,
+		); err != nil {
+			return fmt.Errorf("upsert role %s: %w", r.code, err)
+		}
+	}
+
+	// viewer 角色：覆盖式绑定所有 kind=page 的权限码
+	// 先清空 viewer 已有绑定，再写入当前所有 page 码（随权限码增删自动跟进）
+	var viewerID string
+	if err := db.GetContext(ctx, &viewerID,
+		`SELECT id FROM roles WHERE code = $1`, perm.RoleCodeViewer,
+	); err != nil {
+		return fmt.Errorf("lookup viewer role: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`DELETE FROM role_permissions WHERE role_id = $1`, viewerID,
+	); err != nil {
+		return fmt.Errorf("clear viewer permissions: %w", err)
+	}
+	for _, p := range perm.Codes {
+		if p.Kind != perm.KindPage {
+			continue
+		}
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO role_permissions (role_id, permission_code) VALUES ($1, $2)
+			 ON CONFLICT DO NOTHING`,
+			viewerID, p.Code,
+		); err != nil {
+			return fmt.Errorf("grant %s to viewer: %w", p.Code, err)
+		}
+	}
+	log.Logger.Info("roles seeded: admin (中间件特判), viewer (所有 page 权限)")
+	return nil
+}
+
+// seedUserRoles 给本地 admin 账号 + 已存在的 daipengyuan 绑 admin 角色。
+// 幂等：用户不存在则跳过；ON CONFLICT 不重复插入。
+func seedUserRoles(ctx context.Context, db *sqlx.DB) error {
+	var adminRoleID string
+	if err := db.GetContext(ctx, &adminRoleID,
+		`SELECT id FROM roles WHERE code = $1`, perm.RoleCodeAdmin,
+	); err != nil {
+		return fmt.Errorf("lookup admin role: %w", err)
+	}
+
+	// 给本地 admin 账号绑 admin 角色
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO user_roles (user_id, role_id)
+		 SELECT id, $1 FROM users WHERE username = 'admin'
+		 ON CONFLICT DO NOTHING`,
+		adminRoleID,
+	); err != nil {
+		return fmt.Errorf("bind admin user to admin role: %w", err)
+	}
+
+	// daipengyuan（戴澎源）：飞书 open_id 预设管理员
+	// 用户尚未通过 lark 登录入库则跳过，下次重跑 seed 即补绑
+	const daipengyuanOpenID = "ou_df061cdb2f20ffaaedd566e672a43261"
+	res, err := db.ExecContext(ctx,
+		`INSERT INTO user_roles (user_id, role_id)
+		 SELECT id, $1 FROM users WHERE lark_open_id = $2
+		 ON CONFLICT DO NOTHING`,
+		adminRoleID, daipengyuanOpenID,
+	)
+	if err != nil {
+		return fmt.Errorf("bind daipengyuan to admin role: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		log.Logger.Info("daipengyuan 用户尚未入库（首次飞书登录后重跑 seed 即可绑 admin）")
 	}
 	return nil
 }

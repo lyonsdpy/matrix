@@ -28,7 +28,7 @@ type Department struct {
 type Device struct {
 	DeviceID         string // 设备 ID（device_record_id）
 	DeviceName       string // 设备名称
-	Platform         string // 终端类型编号（1=Win/2=Mac/3=Linux/4=iOS/5=Android）
+	Platform         string // device_terminal_type 物理形态编号（0=未知/1=移动端/2=桌面端）
 	CurrentUserID    string // 当前登录用户 ID（飞书 user_id）
 	LatestUserID     string // 最近登录用户 ID（飞书 user_id）
 	Ownership        string // device_ownership 原始编号（1/2 公司/个人）

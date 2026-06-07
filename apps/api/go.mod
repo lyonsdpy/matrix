@@ -12,6 +12,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.5.4
+	github.com/lib/pq v1.10.9
 	github.com/neo4j/neo4j-go-driver/v6 v6.1.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/twmb/franz-go v1.21.0
@@ -19,6 +20,7 @@ require (
 	github.com/vikstrous/dataloadgen v0.0.10
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.50.0
+	golang.org/x/sync v0.20.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -67,7 +69,6 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/tools v0.43.0 // indirect

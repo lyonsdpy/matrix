@@ -1,5 +1,6 @@
 /*
-可接入网络的终端设备，包含：电脑、打印机
+用户终端：飞书 device_record 同步过来的、自然人用于办公/登录的设备（桌面端/移动端）。
+打印机、电视、考勤机等"哑终端"由后续独立模块管理，不在本枚举范围内。
 */
 
 package domain
@@ -19,17 +20,14 @@ type Endpoint struct {
 	TemporalMeta                    // 时态元数据（版本、时间戳、软删除）
 }
 
+// EndpointType 与飞书 device_terminal_type 对齐：0=未知 / 1=移动端 / 2=桌面端。
+// 不细分笔记本/平板/手机，飞书也不提供该粒度；如需细分由资产管理系统补充。
 type EndpointType string
 
 const (
-	EndpointTypePC         EndpointType = "PC"         // 台式机
-	EndpointTypeLaptop     EndpointType = "LAPTOP"     // 便携笔记本
-	EndpointTypePrinter    EndpointType = "PRINTER"    // 打印机
-	EndpointTypeTV         EndpointType = "TV"         // 智能电视
-	EndpointTypeAttendance EndpointType = "ATTENDANCE" // 考勤机
-	EdnpointTypePhone      EndpointType = "PHONE"      // 手机
-	EndpointTypeTablet     EndpointType = "TABLET"     // 平板
-	EndpointTypeOther      EndpointType = "OTHER"
+	EndpointTypeDesktop EndpointType = "DESKTOP" // 桌面端（terminal_type=2，Win/Mac/Linux）
+	EndpointTypeMobile  EndpointType = "MOBILE"  // 移动端（terminal_type=1，iOS/Android/HarmonyOS）
+	EndpointTypeUnknown EndpointType = "UNKNOWN" // 未知（terminal_type=0 或缺失）
 )
 
 type EndpointStatus string
@@ -42,7 +40,7 @@ const (
 )
 
 // EndpointOS 终端操作系统枚举。
-// 飞书 device_terminal_type: 1=Win/2=Mac/3=Linux/4=iOS/5=Android/6=HarmonyOS。
+// 飞书 device_system: 1=Windows / 2=macOS / 3=Linux / 4=Android / 5=iOS / 6=OpenHarmony。
 type EndpointOS string
 
 const (
@@ -62,10 +60,10 @@ type SyncedEndpoint struct {
 	ID             string         `json:"id"`
 	FeishuDeviceID string         `json:"feishu_device_id"`
 	Name           string         `json:"name"`
-	Type           EndpointType   `json:"type"` // 物理形态（PC/PHONE/...）
+	Type           EndpointType   `json:"type"` // 物理形态（DESKTOP/MOBILE/UNKNOWN）
 	OS             EndpointOS     `json:"os"`   // 操作系统（WINDOWS/MACOS/...）
 	Status         EndpointStatus `json:"status"`
-	PlatformCode   string         `json:"platform_code"` // 飞书原始 terminal_type 编号（1~6）
+	PlatformCode   string         `json:"platform_code"` // 飞书原始 device_terminal_type 编号（0/1/2）
 
 	// 硬件标识
 	SerialNumber     string `json:"serial_number"`

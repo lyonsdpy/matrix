@@ -26,6 +26,7 @@ type AuthUser struct {
 type AuthUserRepository interface {
 	FindByUsername(ctx context.Context, username string) (*AuthUser, error)
 	FindByLarkOpenID(ctx context.Context, openID string) (*AuthUser, error)
+	FindByID(ctx context.Context, id string) (*AuthUser, error)
 	Create(ctx context.Context, username, passwordHash string, roles []string) (*AuthUser, error)
 	// CreateLarkUser 创建飞书扫码用户，password_hash 设为空字符串（不允许密码登录）。
 	CreateLarkUser(ctx context.Context, username, larkOpenID string, roles []string) (*AuthUser, error)
@@ -61,6 +62,21 @@ func (r *authUserRepo) FindByUsername(ctx context.Context, username string) (*Au
 	}
 	if err != nil {
 		return nil, fmt.Errorf("auth user repo: find by username: %w", err)
+	}
+	return toAuthUser(row)
+}
+
+func (r *authUserRepo) FindByID(ctx context.Context, id string) (*AuthUser, error) {
+	var row authUserRow
+	err := r.db.GetContext(ctx, &row,
+		`SELECT id, username, password_hash, lark_open_id, roles, created_at, updated_at FROM users WHERE id = $1`,
+		id,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("auth user repo: find by id: %w", err)
 	}
 	return toAuthUser(row)
 }

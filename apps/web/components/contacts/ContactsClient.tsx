@@ -27,7 +27,9 @@ export function ContactsClient() {
   }, [selectedDept]);
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] gap-4">
+    // 不再用 calc(100vh-7rem) 反推：父级 dashboard layout 已限定整页 h-screen，
+    // 这里只需 flex-1 占满父容器剩余空间；min-h-0 让 flex 子项可以正确收缩，否则内部 overflow 会被忽略。
+    <div className="flex min-h-0 flex-1 gap-4">
       {/* 左侧：搜索 + 部门树 */}
       <div className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
         <SearchBar onSelectEntity={setDrawerEntity} />

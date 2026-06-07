@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { EntityRef, UserDetailData } from "@/lib/types";
+import { UserRoleSection } from "./UserRoleSection";
 
 // 用户详情卡片：基本信息 + 所属部门(带完整路径) + 同事(可点击切换抽屉)。
 // onSelectEntity 让卡片内的部门/同事跳转到对应实体详情(EntityDrawer 内切换)。
@@ -134,6 +135,9 @@ export function UserDetail({
           )}
         </div>
       </Section>
+
+      {/* 系统授权：白名单中的本地账号可编辑角色 */}
+      <UserRoleSection openID={data.feishu_id} />
     </div>
   );
 }

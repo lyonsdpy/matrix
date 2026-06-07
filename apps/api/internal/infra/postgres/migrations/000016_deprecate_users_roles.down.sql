@@ -1,0 +1,1 @@
+COMMENT ON COLUMN users.roles IS NULL;

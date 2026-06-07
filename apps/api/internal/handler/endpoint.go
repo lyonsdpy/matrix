@@ -30,18 +30,18 @@ func (h *Handler) GetEndpointSyncProgress(c *gin.Context) {
 // 终端管理-列表参数：
 //   ?q=设备名/序列号模糊
 //   ?user=关联用户(当前 OR 最近)姓名/邮箱筛选
-//   ?type=物理形态精确匹配（PC|LAPTOP|PRINTER|TV|ATTENDANCE|PHONE|TABLET|OTHER）
+//   ?type=物理形态精确匹配（DESKTOP|MOBILE|UNKNOWN）
 //   ?os=操作系统精确匹配（WINDOWS|MACOS|LINUX|IOS|ANDROID|HARMONYOS|OTHER）
-//   ?cursor=游标 ?limit=页大小
+//   ?page=页码(从1起) ?page_size=每页行数
 func (h *Handler) ListEndpoints(c *gin.Context) {
 	q := c.Query("q")
 	userQ := c.Query("user")
 	typeFilter := c.Query("type")
 	osFilter := c.Query("os")
-	cursor := c.Query("cursor")
-	limit, _ := strconv.Atoi(c.Query("limit"))
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("page_size"))
 
-	list, err := h.svc.Endpoint.List(c.Request.Context(), q, userQ, typeFilter, osFilter, cursor, limit)
+	list, err := h.svc.Endpoint.List(c.Request.Context(), q, userQ, typeFilter, osFilter, page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errno.New(500, "查询终端失败").WithErr(err))
 		return

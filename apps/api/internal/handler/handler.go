@@ -55,47 +55,63 @@ func (h *Handler) Register(r *gin.Engine) {
 		authGroup.POST("/login", h.Login)
 	}
 
+	// ACG 终端合规检查：飞书认证之前的前置门户调用，调用方尚未持有 JWT，
+	// 因此与登录接口一样属公开端点，不挂 Auth 中间件。
+	acg := r.Group("/api/v1/acg")
+	{
+		acg.POST("/edr-check", h.CheckEDR)
+	}
+
 	v1 := r.Group("/api/v1")
 	v1.Use(middleware.Auth(h.jwtSecret))
 	{
+		// ── 仅 Auth 的接口（演示/基础设施，暂未划入权限模块） ──
 		v1.GET("/hello", h.Hello)
-
 		v1.GET("/collectors", h.ListCollectors)
-
 		v1.GET("/tasks", h.ListTasks)
 		v1.POST("/tasks", h.CreateTask)
 		v1.GET("/tasks/:id", h.GetTask)
 		v1.PUT("/tasks/:id", h.UpdateTask)
 		v1.DELETE("/tasks/:id", h.DeleteTask)
-
 		v1.POST("/tasks/:id/enable", h.EnableTask)
 		v1.POST("/tasks/:id/disable", h.DisableTask)
 		v1.POST("/tasks/:id/run", h.RunTaskNow)
-
 		v1.GET("/employees/:id", h.GetEmployee)
+		// 当前登录者的权限码集合：登录后必查，给前端按钮/菜单显隐用
+		v1.GET("/me/permissions", h.MyPermissions)
 
-		// 通讯录-用户列表（搜索 + 游标分页）
-		v1.GET("/users", h.ListUsers)
-		// 通讯录-用户详情(by open_id)：基本信息 + 部门(带路径) + 同事
-		v1.GET("/users/:id", h.GetUserDetail)
+		perm := h.svc.Permission // 中间件依赖注入
 
-		// 通讯录-部门详情：基本信息 + 路径 + 子部门 + 直属成员 + 递归人数
-		v1.GET("/departments/:id", h.GetDepartmentDetail)
+		// ── 通讯录（飞书用户/部门） ──────────────────────────────
+		v1.GET("/users", middleware.RequirePermission(perm, "contact:read"), h.ListUsers)
+		v1.GET("/users/:id", middleware.RequirePermission(perm, "contact:read"), h.GetUserDetail)
+		// 系统本地账号（PG users 表）相关：路径前缀 /auth-users 与通讯录 /users 解耦，避免 :id 语义混淆
+		v1.GET("/auth-users/by-lark/:openId", middleware.RequirePermission(perm, "user:read"), h.GetAuthUserByLark)
+		v1.GET("/auth-users/:id/roles", middleware.RequirePermission(perm, "user:read"), h.GetAuthUserRoles)
+		v1.PUT("/auth-users/:id/roles", middleware.RequirePermission(perm, "user:role:assign"), h.SetAuthUserRoles)
+		v1.GET("/departments/:id", middleware.RequirePermission(perm, "contact:read"), h.GetDepartmentDetail)
+		v1.GET("/contacts/tree", middleware.RequirePermission(perm, "contact:read"), h.ListDepartmentChildren)
+		v1.GET("/contacts/search", middleware.RequirePermission(perm, "contact:read"), h.SearchContacts)
+		v1.POST("/contacts/sync/start", middleware.RequirePermission(perm, "contact:sync"), h.StartContactSync)
+		v1.GET("/contacts/sync/progress", middleware.RequirePermission(perm, "contact:read"), h.GetContactSyncProgress)
 
-		// 终端管理-列表 + 详情（按设备名/序列号 + 关联用户筛选）
-		v1.GET("/endpoints", h.ListEndpoints)
-		v1.GET("/endpoints/:id", h.GetEndpoint)
-		// 终端管理-独立同步（飞书设备 → Endpoint 节点 + CURRENT_LOGIN/LATEST_LOGIN 边）
-		v1.POST("/endpoints/sync/start", h.StartEndpointSync)
-		v1.GET("/endpoints/sync/progress", h.GetEndpointSyncProgress)
+		// ── 终端管理 ─────────────────────────────────────────────
+		v1.GET("/endpoints", middleware.RequirePermission(perm, "endpoint:read"), h.ListEndpoints)
+		v1.GET("/endpoints/:id", middleware.RequirePermission(perm, "endpoint:read"), h.GetEndpoint)
+		v1.POST("/endpoints/sync/start", middleware.RequirePermission(perm, "endpoint:sync"), h.StartEndpointSync)
+		v1.GET("/endpoints/sync/progress", middleware.RequirePermission(perm, "endpoint:read"), h.GetEndpointSyncProgress)
 
-		// 通讯录-部门树懒加载(parent="" 顶级)
-		v1.GET("/contacts/tree", h.ListDepartmentChildren)
-		// 通讯录-联合搜索(用户 + 部门)
-		v1.GET("/contacts/search", h.SearchContacts)
-		// 通讯录-触发飞书同步 / 查询同步进度
-		v1.POST("/contacts/sync/start", h.StartContactSync)
-		v1.GET("/contacts/sync/progress", h.GetContactSyncProgress)
+		// ── 权限/角色管理 ────────────────────────────────────────
+		v1.GET("/permissions", middleware.RequirePermission(perm, "role:read"), h.ListPermissions)
+		v1.GET("/roles", middleware.RequirePermission(perm, "role:read"), h.ListRoles)
+		v1.GET("/roles/:id", middleware.RequirePermission(perm, "role:read"), h.GetRole)
+		v1.POST("/roles", middleware.RequirePermission(perm, "role:write"), h.CreateRole)
+		v1.PUT("/roles/:id", middleware.RequirePermission(perm, "role:write"), h.UpdateRole)
+		v1.DELETE("/roles/:id", middleware.RequirePermission(perm, "role:delete"), h.DeleteRole)
+		v1.PUT("/roles/:id/permissions", middleware.RequirePermission(perm, "role:assign"), h.SetRolePermissions)
+		v1.GET("/roles/:id/users", middleware.RequirePermission(perm, "role:read"), h.ListRoleUsers)
+		v1.POST("/roles/:id/users", middleware.RequirePermission(perm, "role:assign"), h.AddRoleUsers)
+		v1.DELETE("/roles/:id/users/:userId", middleware.RequirePermission(perm, "role:assign"), h.RemoveRoleUser)
 	}
 
 	// 内部接口：仅供 Next.js 服务端调用，通过 X-Internal-Secret 鉴权，不走 JWT 中间件

@@ -24,6 +24,11 @@ type authUserRepo interface {
 	CreateLarkUser(ctx context.Context, username, larkOpenID string, roles []string) (*pg_repo.AuthUser, error)
 }
 
+// FindByLarkOpenID 透传给 handler：通讯录用户详情抽屉用 open_id 反查本地账号
+func (s *AuthService) FindByLarkOpenID(ctx context.Context, openID string) (*pg_repo.AuthUser, error) {
+	return s.repo.FindByLarkOpenID(ctx, openID)
+}
+
 // AuthService 处理登录认证，生成无状态 JWT。
 // cookie 生命周期由 Next.js 服务端管理，Go API 只负责签发和验证 JWT。
 type AuthService struct {

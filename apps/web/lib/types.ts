@@ -110,8 +110,55 @@ export interface SyncedEndpoint {
 }
 
 // 终端列表响应，对应后端 service.EndpointList。
+// page 从 1 起；total 为命中总数（用于分页器渲染"共 N 条 / 共 M 页"和跳页）。
 export interface EndpointList {
   endpoints: SyncedEndpoint[];
-  has_next: boolean;
-  end_cursor: string;
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// ─── RBAC 角色权限 ────────────────────────────────────────────────
+
+// 权限码视图，对应后端 service.PermissionView
+export interface Permission {
+  code: string;
+  name: string;
+  module: string;
+  kind: "page" | "action";
+  parent_code: string; // 空字符串表示顶级
+  sort: number;
+}
+
+// 角色视图（列表/详情共用），对应后端 service.RoleView
+export interface Role {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  is_system: boolean;
+  user_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// 角色详情，对应后端 service.RoleDetail
+export interface RoleDetail extends Role {
+  permission_codes: string[]; // admin 角色为空（走中间件特判）
+}
+
+// 角色下用户视图
+export interface RoleUser {
+  user_id: string;
+  username: string;
+  lark_open_id: string;
+  granted_at: string;
+}
+
+// 当前登录者的权限码集合（给前端按钮/菜单显隐用）
+export interface MePermissions {
+  user_id: string;
+  username: string;
+  is_admin: boolean;
+  permissions: string[];
 }

@@ -44,7 +44,7 @@ func (r *Neo4jEndpointRepo) BulkUpsert(ctx context.Context, batch []lark.Device)
 			"id":                 uuid.NewSHA1(uuid.Nil, []byte(d.DeviceID)).String(),
 			"name":               d.DeviceName,
 			"type":               string(terminalTypeToEndpoint(d.Platform)),
-			"os":                 string(terminalTypeToOS(d.Platform)),
+			"os":                 string(deviceSystemToOS(d.OSCode)),
 			"status":             string(domain.EndpointStatusActive),
 			"platform_code":      d.Platform,
 			"serial_number":      d.SerialNumber,
@@ -209,18 +209,23 @@ func (r *Neo4jEndpointRepo) DeleteByFeishuDeviceIDs(ctx context.Context, ids []s
 	return 0, nil
 }
 
-// Search 终端管理列表查询：按设备名/序列号模糊 + 关联用户名/邮箱筛选 + 类型/系统精确筛选 + 游标分页。
-// cursor 为 feishu_device_id，排序也按之，保证分页稳定。limit 由 service 层归一化。
+// Search 终端管理列表查询：按设备名/序列号模糊 + 关联用户名/邮箱筛选 + 类型/系统精确筛选 + 分页（offset/limit）。
+// 排序按 feishu_device_id 升序，保证分页稳定。limit/offset 由 service 层归一化。
 // typeFilter / osFilter 为精确匹配（值是 EndpointType / EndpointOS 常量字符串）；空字符串视为不筛。
 // userQ 非空时要求设备至少有一个关联 User(current 或 latest) 命中关键字。
-func (r *Neo4jEndpointRepo) Search(ctx context.Context, q, userQ, typeFilter, osFilter, cursor string, limit int) ([]*domain.SyncedEndpoint, bool, string, error) {
-	result, err := neo4j.ExecuteQuery(ctx, r.driver,
+// 拆成两条 cypher（count + page）便于前端做"第 N 页"跳转：单条 collect 会把全部命中节点一次性
+// 驻留在内存里，对几千级别的列表也没必要，count 走全表扫描的代价远低于把所有节点收集到列表里。
+func (r *Neo4jEndpointRepo) Search(ctx context.Context, q, userQ, typeFilter, osFilter string, offset, limit int) ([]*domain.SyncedEndpoint, int64, error) {
+	params := map[string]any{
+		"q": q, "userQ": userQ,
+		"typeFilter": typeFilter, "osFilter": osFilter,
+	}
+	countRes, err := neo4j.ExecuteQuery(ctx, r.driver,
 		`MATCH (e:Endpoint)
 		 WHERE ($q = "" OR toLower(e.name) CONTAINS toLower($q)
 		                 OR toLower(coalesce(e.serial_number, "")) CONTAINS toLower($q))
 		   AND ($typeFilter = "" OR e.type = $typeFilter)
 		   AND ($osFilter   = "" OR e.os   = $osFilter)
-		   AND ($cursor = "" OR e.feishu_device_id > $cursor)
 		 OPTIONAL MATCH (e)-[:CURRENT_LOGIN]->(cu:User)
 		 OPTIONAL MATCH (e)-[:LATEST_LOGIN]->(lu:User)
 		 WITH e, cu, lu
@@ -229,20 +234,55 @@ func (r *Neo4jEndpointRepo) Search(ctx context.Context, q, userQ, typeFilter, os
 		    OR toLower(coalesce(cu.email, "")) CONTAINS toLower($userQ)
 		    OR toLower(coalesce(lu.name, ""))  CONTAINS toLower($userQ)
 		    OR toLower(coalesce(lu.email, "")) CONTAINS toLower($userQ)
-		 RETURN e, cu, lu ORDER BY e.feishu_device_id LIMIT $limit`,
-		map[string]any{
-			"q": q, "userQ": userQ,
-			"typeFilter": typeFilter, "osFilter": osFilter,
-			"cursor": cursor, "limit": limit + 1,
-		},
+		 RETURN count(DISTINCT e) AS total`,
+		params,
 		neo4j.EagerResultTransformer,
 		neo4j.ExecuteQueryWithDatabase(r.dbName),
 	)
 	if err != nil {
-		return nil, false, "", fmt.Errorf("endpoint repo: search: %w", err)
+		return nil, 0, fmt.Errorf("endpoint repo: count: %w", err)
 	}
-	endpoints := make([]*domain.SyncedEndpoint, 0, len(result.Records))
-	for _, rec := range result.Records {
+	var total int64
+	if len(countRes.Records) > 0 {
+		if v, ok := countRes.Records[0].Get("total"); ok {
+			if n, ok := v.(int64); ok {
+				total = n
+			}
+		}
+	}
+	if total == 0 || int64(offset) >= total {
+		return []*domain.SyncedEndpoint{}, total, nil
+	}
+
+	pageParams := map[string]any{
+		"q": q, "userQ": userQ,
+		"typeFilter": typeFilter, "osFilter": osFilter,
+		"offset": offset, "limit": limit,
+	}
+	pageRes, err := neo4j.ExecuteQuery(ctx, r.driver,
+		`MATCH (e:Endpoint)
+		 WHERE ($q = "" OR toLower(e.name) CONTAINS toLower($q)
+		                 OR toLower(coalesce(e.serial_number, "")) CONTAINS toLower($q))
+		   AND ($typeFilter = "" OR e.type = $typeFilter)
+		   AND ($osFilter   = "" OR e.os   = $osFilter)
+		 OPTIONAL MATCH (e)-[:CURRENT_LOGIN]->(cu:User)
+		 OPTIONAL MATCH (e)-[:LATEST_LOGIN]->(lu:User)
+		 WITH e, cu, lu
+		 WHERE $userQ = ""
+		    OR toLower(coalesce(cu.name, ""))  CONTAINS toLower($userQ)
+		    OR toLower(coalesce(cu.email, "")) CONTAINS toLower($userQ)
+		    OR toLower(coalesce(lu.name, ""))  CONTAINS toLower($userQ)
+		    OR toLower(coalesce(lu.email, "")) CONTAINS toLower($userQ)
+		 RETURN e, cu, lu ORDER BY e.feishu_device_id SKIP $offset LIMIT $limit`,
+		pageParams,
+		neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase(r.dbName),
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("endpoint repo: search: %w", err)
+	}
+	endpoints := make([]*domain.SyncedEndpoint, 0, len(pageRes.Records))
+	for _, rec := range pageRes.Records {
 		eNode, _, _ := neo4j.GetRecordValue[neo4j.Node](rec, "e")
 		ep := nodeToSyncedEndpoint(eNode)
 		if cuVal, ok := rec.Get("cu"); ok && cuVal != nil {
@@ -257,15 +297,7 @@ func (r *Neo4jEndpointRepo) Search(ctx context.Context, q, userQ, typeFilter, os
 		}
 		endpoints = append(endpoints, ep)
 	}
-	hasNext := len(endpoints) > limit
-	if hasNext {
-		endpoints = endpoints[:limit]
-	}
-	var endCursor string
-	if len(endpoints) > 0 {
-		endCursor = endpoints[len(endpoints)-1].FeishuDeviceID
-	}
-	return endpoints, hasNext, endCursor, nil
+	return endpoints, total, nil
 }
 
 // GetDetail 终端详情：按 id 取节点 + 两个关联 User。id 为节点 id（SHA1(feishu_device_id)）。
@@ -334,23 +366,22 @@ func nodeToSyncedEndpoint(node neo4j.Node) *domain.SyncedEndpoint {
 }
 
 // terminalTypeToEndpoint 飞书 device_terminal_type 编号 → 物理形态（domain.EndpointType）。
-// 飞书定义：1=Windows / 2=macOS / 3=Linux / 4=iOS / 5=Android / 6=HarmonyOS。
-// 桌面三种统一归为 PC，移动三种统一归为 PHONE（terminal_type 无法区分笔记本/平板，
-// 让资产管理后续细分）。
+// 飞书 SDK 真实定义：0=未知 / 1=移动端 / 2=桌面端，本模块对齐保留三态。
 func terminalTypeToEndpoint(code string) domain.EndpointType {
 	switch code {
-	case "1", "2", "3":
-		return domain.EndpointTypePC
-	case "4", "5", "6":
-		return domain.EdnpointTypePhone
+	case "1":
+		return domain.EndpointTypeMobile
+	case "2":
+		return domain.EndpointTypeDesktop
 	default:
-		return domain.EndpointTypeOther
+		return domain.EndpointTypeUnknown
 	}
 }
 
-// terminalTypeToOS 飞书 device_terminal_type 编号 → 操作系统（domain.EndpointOS）。
-// 与 terminalTypeToEndpoint 同源，但保留 OS 级别区分（macOS / Linux / Android / HarmonyOS）。
-func terminalTypeToOS(code string) domain.EndpointOS {
+// deviceSystemToOS 飞书 device_system 编号 → 操作系统（domain.EndpointOS）。
+// 飞书 SDK 真实定义：1=Windows / 2=macOS / 3=Linux / 4=Android / 5=iOS / 6=OpenHarmony。
+// 注意：iOS 与 Android 的编号与一般直觉相反，以 SDK 为准。
+func deviceSystemToOS(code string) domain.EndpointOS {
 	switch code {
 	case "1":
 		return domain.EndpointOSWindows
@@ -359,9 +390,9 @@ func terminalTypeToOS(code string) domain.EndpointOS {
 	case "3":
 		return domain.EndpointOSLinux
 	case "4":
-		return domain.EndpointOSIOS
-	case "5":
 		return domain.EndpointOSAndroid
+	case "5":
+		return domain.EndpointOSIOS
 	case "6":
 		return domain.EndpointOSHarmonyOS
 	default:
@@ -383,8 +414,8 @@ func (StubEndpointRepo) ListAllFeishuDeviceIDs(context.Context) (map[string]stru
 func (StubEndpointRepo) DeleteByFeishuDeviceIDs(context.Context, []string) (int, error) {
 	return 0, nil
 }
-func (StubEndpointRepo) Search(context.Context, string, string, string, string, string, int) ([]*domain.SyncedEndpoint, bool, string, error) {
-	return []*domain.SyncedEndpoint{}, false, "", nil
+func (StubEndpointRepo) Search(context.Context, string, string, string, string, int, int) ([]*domain.SyncedEndpoint, int64, error) {
+	return []*domain.SyncedEndpoint{}, 0, nil
 }
 func (StubEndpointRepo) GetDetail(context.Context, string) (*domain.SyncedEndpoint, error) {
 	return nil, nil
