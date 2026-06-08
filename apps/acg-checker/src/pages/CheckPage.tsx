@@ -43,6 +43,8 @@ export function CheckPage() {
     void (async () => {
       const runtime = detectRuntime()
 
+      // 仅移动端免检直接放行；Mac 与 Windows 均需走 EDR 检测（后端探测
+      // 客户端 8445 端口的安全客户端 both_way/communication 接口）。
       if (runtime.isMobile) {
         if (cancelled) return
         setState({ kind: 'redirecting' })

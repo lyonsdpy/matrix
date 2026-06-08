@@ -11,7 +11,8 @@ import (
 // CheckEDR POST /api/v1/acg/edr-check
 //
 // 公开接口（认证前调用）。由 acg-checker 浏览器端调用，后端反过来探测
-// 调用方 IP 的 16721 端口，判定企业 EDR 是否在跑。
+// 调用方 IP 的安全客户端端口（HTTPS 8445），按 200 + JSON errorCode 判定
+// 终端是否合规。Mac 与 Windows 都需要做检查，仅移动端在前端直接放行。
 //
 // 不挂 JWT 中间件、不挂 RequirePermission，原因：调用发生在飞书 OAuth
 // 之前，用户尚未持有任何身份。与 /api/v1/auth/login 同属"认证前公开端点"。

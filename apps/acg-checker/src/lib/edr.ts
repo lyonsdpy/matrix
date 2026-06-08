@@ -25,8 +25,10 @@ function resolveApiBaseUrl(opts: EdrCheckOptions): string {
   return ''
 }
 
-// checkEdr 让后端探测当前客户端 IP 的 OfficeScan 端口，按 503 + Server: OfficeScan Client
-// 严格判定。浏览器侧不再做 no-cors fetch，避免无法读 status/header 的限制。
+// checkEdr 让后端探测当前客户端 IP 的安全客户端 HTTPS 端口（8445 上的
+// /both_way/communication），按 status 200 + JSON errorCode==200 判定。
+// 浏览器侧不再直接 fetch 该端口：跨源 + 自签证书 + no-cors opaque 三重
+// 限制下，前端读不到 status/body，必须由服务端代探。
 export async function checkEdr(opts: EdrCheckOptions = {}): Promise<EdrResult> {
   // 本地开发 mock 短路：留作离线/无网环境演示用
   const mock = import.meta.env.VITE_EDR_MOCK

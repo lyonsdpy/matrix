@@ -45,22 +45,22 @@ flowchart TD
 
 **D 系统职责**
 
-- 判断终端是 PC 还是移动端
-- PC 端：检测企业 EDR（亚信安全 OfficeScan Client）是否在运行
+- 判断终端是 PC（Mac / Windows）还是移动端
+- PC（Mac 与 Windows 一视同仁）：由后端反向探测客户端 `https://[client_ip]:8445/both_way/communication`，按 `status 200 + JSON errorCode==200` 判定终端安全客户端是否在运行
+- 移动端：**视同免检**直接放行
 - 通过 → 跳转飞书认证 URL
-- 失败 → 显示阻断页，提示用户安装或启动 EDR
+- 失败 → 显示阻断页，提示用户安装或启动安全客户端
 
 ---
 
 ## 2. MVP 范围
 
-| 包含                              | 不包含（留给后续生产版本） |
-| --------------------------------- | -------------------------- |
-| PC / 移动端判断                   | 服务端校验                 |
-| OfficeScan 端口检测（PC 端）      | Token 签发                 |
-| 失败阻断页                        | 状态存储                   |
-| 跳转飞书认证                      | 审计日志、用户管理         |
-|                                   | 任何后端依赖               |
+| 包含                                   | 不包含（留给后续生产版本） |
+| -------------------------------------- | -------------------------- |
+| PC（Mac/Win）/ 移动端判断              | 状态存储                   |
+| 后端反探 8445 安全客户端端口（PC 端）  | 审计日志、用户管理         |
+| 失败阻断页                             | Token 签发                 |
+| 跳转飞书认证                           |                            |
 
 ---
 
@@ -87,19 +87,15 @@ flowchart TD
 
 ## 4. 部署架构（关键前提）
 
-> ⚠️ 本项目的部署模型**不是**"中心化托管 SPA"，而是 **每台 PC 本地托管 + 公司 DNS 解析到本机**。理解这一点是看懂后面所有 fetch URL 的前提。
+> ⚠️ EDR 检测**由后端代探**：浏览器调 `/api/v1/acg/edr-check`，后端拿请求方 ClientIP 反向请求 `https://[client_ip]:8445/both_way/communication`，按 200 + JSON `errorCode==200` 判定。
+>
+> 浏览器侧不再直接 fetch 客户端端口（CORS + 自签证书 + no-cors opaque 三重阻挡，前端读不到 status/body）。
 
-### 4.1 DNS 与本机布局
+### 4.1 部署形态
 
-```mermaid
-flowchart LR
-    DNS["公司内网 DNS<br/>lccalhost.xlbsoft.com<br/>A → 127.0.0.1"]
-    subgraph PC["每台员工 PC"]
-        NGINX[":80<br/>本地 nginx<br/>托管 dist/"]
-        OS[":16721<br/>OfficeScan Client"]
-    end
-    DNS -. 任意机器解析<br/>都指向自己 .-> PC
-```
+- 门户 SPA（本项目）：中心化或本地托管均可
+- 后端 API（`apps/api`）：暴露 `/api/v1/acg/edr-check`，需要能反向到达员工 PC 的 8445 端口
+- 员工 PC：运行安全客户端，监听 8445（HTTPS，通常自签证书）
 
 ### 4.2 用户访问链路
 
@@ -108,27 +104,26 @@ sequenceDiagram
     autonumber
     participant B as 上网行为系统 (B)
     participant Browser as 用户浏览器
-    participant DNS as 公司 DNS
-    participant Local as 本机 :80<br/>(nginx)
-    participant OS as 本机 :16721<br/>(OfficeScan)
+    participant SPA as 门户 SPA (D)
+    participant API as 后端 API
+    participant PC as 客户端 :8445<br/>(安全客户端)
 
-    B->>Browser: 302 → http://lccalhost.xlbsoft.com/check?redirect=...
-    Browser->>DNS: 解析 lccalhost.xlbsoft.com
-    DNS-->>Browser: 127.0.0.1
-    Browser->>Local: GET /check?redirect=...
-    Local-->>Browser: SPA (index.html + js)
-    Note over Browser: SPA 启动<br/>开始 EDR 检测
-    Browser->>OS: GET http://lccalhost.xlbsoft.com:16721/<br/>(mode: no-cors)
-    OS-->>Browser: HTTP/1.0 400（任意响应都算 pass）
+    B->>Browser: 302 → /check?redirect=...
+    Browser->>SPA: GET /check?redirect=...
+    SPA-->>Browser: index.html + js
+    Note over Browser: SPA 启动<br/>识别终端类型
+    Browser->>API: POST /api/v1/acg/edr-check
+    Note over API: 拿 ClientIP 作探测目标
+    API->>PC: POST https://[client_ip]:8445/both_way/communication
+    PC-->>API: 200 {"errorCode":200,"errorInfo":"Error Params"}
+    API-->>Browser: {"pass":true}
     Note over Browser: 检测通过<br/>跳转飞书
 ```
 
 ### 4.3 为什么这么设计
 
-- 门户和 EDR 端口 **同协议（HTTP）同 host**，避免 HTTPS → HTTP 的 **mixed content** 拦截。
-- 不在 URL 里直接写 `127.0.0.1`，对用户更友好，也方便后续如需 TLS 时申请域名证书。
-
-> ⚠️ 门户**必须**用 HTTP，不能升级到 HTTPS，否则浏览器会拦截到本地 HTTP 端口的请求。
+- 后端代探绕开浏览器对 CORS / 自签 HTTPS / no-cors opaque 的限制，能拿到完整 status 与 body，判定更稳。
+- 8445 是 HTTPS 自签端口，后端 `InsecureSkipVerify` 仅用于"端口可达性 + 响应结构"探测，不传敏感数据。
 
 ---
 
@@ -170,11 +165,13 @@ stateDiagram-v2
 
 **关键决策点**
 
-| 终端       | EDR 检测 | 结果         |
-| ---------- | -------- | ------------ |
-| 移动端     | 跳过     | 直接跳飞书   |
-| PC + 通过  | 执行     | 直接跳飞书   |
-| PC + 失败  | 执行     | 进 `/failed` |
+| 终端              | EDR 检测 | 结果         |
+| ----------------- | -------- | ------------ |
+| 移动端            | 跳过     | 直接跳飞书   |
+| Mac + 通过        | 执行     | 直接跳飞书   |
+| Mac + 失败        | 执行     | 进 `/failed` |
+| Windows + 通过    | 执行     | 直接跳飞书   |
+| Windows + 失败    | 执行     | 进 `/failed` |
 
 ---
 
@@ -185,9 +182,10 @@ stateDiagram-v2
 ```typescript
 // src/lib/runtime.ts
 export interface RuntimeInfo {
-  isPC: boolean
-  isMobile: boolean
-  isFeishu: boolean   // 仅作环境标识，不参与 PC/移动端判断
+  isPC: boolean       // Windows（需要 EDR 检测）
+  isMac: boolean      // macOS（需要 EDR 检测，与 PC 一致）
+  isMobile: boolean   // 移动端，视同免检
+  isFeishu: boolean   // 仅作环境标识，不参与 PC/Mac/移动端判断
 }
 
 export function detectRuntime(): RuntimeInfo
@@ -199,13 +197,19 @@ export function detectRuntime(): RuntimeInfo
 
 ```typescript
 navigator.userAgent
-navigator.userAgentData                  // Chromium 系
+navigator.userAgentData                  // Chromium 系，含 platform: "Windows" | "macOS"
 navigator.maxTouchPoints                 // 触屏数量
 window.matchMedia('(pointer: coarse)')   // 粗指针（手指）
 window.matchMedia('(hover: none)')       // 不支持 hover
 ```
 
-**规则**：移动端特征明显 → `Mobile`，否则 → `PC`。无需识别具体品牌型号。
+**规则**：
+
+1. 先判 Mobile（触屏特征明显 → `Mobile`）
+2. 再判 Mac（`userAgentData.platform === 'macOS'` 或 UA 含 `Macintosh|Mac OS X`）
+3. 否则视为 `PC`（Windows 等需要 EDR）
+
+> ⚠️ **iPadOS Safari 陷阱**：iPad 默认请求"桌面网站"，UA 写成 `Macintosh; Intel Mac OS X`，看起来跟 Mac 一样。必须**先判 Mobile 再判 Mac**——iPad 的触屏信号会先把它归到 Mobile，避免被误判为 Mac。
 
 ### 7.3 飞书环境识别
 
@@ -222,85 +226,67 @@ const isFeishu = /Lark|Feishu|LarkLocale|Lark\/|Feishu\//i.test(navigator.userAg
 ### 8.1 检测目标
 
 ```
-GET http://lccalhost.xlbsoft.com:16721/
+POST https://[client_ip]:8445/both_way/communication
 ```
 
-### 8.2 已验证事实
+判定通过的双重条件：
 
-| 项               | 值                                                            |
-| ---------------- | ------------------------------------------------------------- |
-| 企业 EDR         | 亚信安全 OfficeScan Client                                    |
-| Windows 服务名   | `tmlisten` / `OfficeScan NT Listener`                         |
-| 程序路径         | `C:\Program Files\Asiainfo Security\OfficeScan Client\tmlisten.exe` |
-| 监听端口         | `127.0.0.1:16721`                                             |
-| `curl` 返回      | `HTTP/1.0 400 Bad Request` + `Server: OfficeScan Client`      |
+1. HTTP 状态码 == 200
+2. 响应 body 为合法 JSON，且 `errorCode == 200`
 
-只要能拿到 **任意** HTTP 响应（含 400），就说明 OfficeScan 在跑。
+实测客户端在监听时，对空 body 的 POST 会回：
 
-### 8.3 浏览器侧实现要点（必读）
+```json
+{"errorCode": 200, "errorInfo": "Error Params"}
+```
 
-浏览器**无法**直接探测 TCP 端口，只能通过 `fetch`。规范上有三条硬约束：
+`errorInfo` 的具体文案不参与判定（可能因版本差异）。
 
-1. **跨端口属于跨源** → 必须用 `mode: 'no-cors'`，否则 fetch 因 CORS 失败。
-2. **`no-cors` 下 Response 是 opaque** → `status` 永远是 `0`，**无法读任何 header**（包括 `Server: OfficeScan Client`）。
-3. **因此判断标准只能是 "promise 是否 reject"**：
+### 8.2 由后端代探的原因
 
-   | 结果              | 含义                              | 判定 |
-   | ----------------- | --------------------------------- | ---- |
-   | resolve           | TCP 握手 + HTTP 解析成功          | pass |
-   | reject TypeError  | 连接被拒 / DNS 失败 / 网络错误    | fail |
-   | reject AbortError | 超时                              | fail |
+浏览器侧直接 fetch 该端口同时撞三堵墙：
 
-> ⚠️ **不要**写 `if (resp.status === 400)` 或 `resp.headers.get('server')`——这些信息在 no-cors 下全部被浏览器抹掉。
-> 原 §8.2 验证里"返回 400 也算通过"的真实含义是 **"只要 promise resolve 就算通过"**。
+1. **跨源**：协议/端口不同，浏览器要求 CORS，但客户端不会回 CORS 头。
+2. **自签证书**：8445 通常是自签 HTTPS，浏览器在无用户预授权时直接拒绝握手。
+3. **no-cors opaque**：即使绕回 `no-cors`，Response 也是 opaque，`status` 永远为 0、headers/body 一律读不到，根本拿不到 `errorCode`。
 
-### 8.4 参考实现
+因此浏览器侧不再尝试直探。流程改为：
+
+```
+浏览器 ─POST─► 门户后端 /api/v1/acg/edr-check
+                 │
+                 │ 拿 ClientIP 作探测目标
+                 ▼
+        POST https://[ClientIP]:8445/both_way/communication
+                 │
+                 │ 校验 status 200 && errorCode==200
+                 ▼
+        {"pass": true|false, "reason": "..."}
+                 │
+                 ▼
+              浏览器
+```
+
+### 8.3 后端实现要点
+
+代码位于 `apps/api/internal/service/acg.go`：
+
+- HTTP 客户端 `InsecureSkipVerify: true`：探测仅校验端口可达 + 响应结构，不传敏感数据，自签证书无需信任链。
+- 关闭 keep-alive，避免向不同 PC 客户端的连接被串用。
+- 不跟随重定向，按原始响应判定。
+- IP 规范化：`::1` → `127.0.0.1`，`::ffff:1.2.3.4` → `1.2.3.4`，避免 dual-stack 监听把 IPv6 喂给只监听 IPv4 的客户端。
+- 超时、连接拒绝、TLS 握手失败 → `Pass=false`（不是 error），error 仅留给"参数非法"等编程错误。
+
+### 8.4 前端封装
 
 ```typescript
 // src/lib/edr.ts
 export type EdrResult = 'pass' | 'fail'
 
-export interface EdrCheckOptions {
-  url?: string          // default: 'http://lccalhost.xlbsoft.com:16721/'
-  timeoutMs?: number    // default: 2000
-}
-
-export async function checkEdr(opts: EdrCheckOptions = {}): Promise<EdrResult> {
-  // 本地开发 mock（详见 §11）
-  const mock = import.meta.env.VITE_EDR_MOCK
-  if (mock === 'pass' || mock === 'fail') return mock
-
-  const url = opts.url ?? 'http://lccalhost.xlbsoft.com:16721/'
-  const timeoutMs = opts.timeoutMs ?? 2000
-
-  const ac = new AbortController()
-  const timer = setTimeout(() => ac.abort(), timeoutMs)
-  try {
-    await fetch(url, {
-      method: 'GET',
-      mode: 'no-cors',
-      cache: 'no-store',
-      signal: ac.signal,
-      credentials: 'omit',
-      redirect: 'manual',
-    })
-    return 'pass'
-  } catch {
-    return 'fail'
-  } finally {
-    clearTimeout(timer)
-  }
-}
+export async function checkEdr(opts: EdrCheckOptions = {}): Promise<EdrResult>
 ```
 
-### 8.5 为什么不用其他方案
-
-| 方案                   | 放弃原因                                                |
-| ---------------------- | ------------------------------------------------------- |
-| File System Access API | 需用户授权、路径访问受限、飞书内置浏览器不一定支持      |
-| 检查进程               | 浏览器无法访问本地进程                                  |
-| 检查 Windows 服务      | 浏览器无法访问 Windows 服务                             |
-| 检查注册表             | 浏览器无法访问 Windows 注册表                           |
+前端调 `POST /api/v1/acg/edr-check`，按响应 `pass` 字段返回 `'pass'|'fail'`；网络层异常一律算 `'fail'`。
 
 ---
 
@@ -337,8 +323,7 @@ export async function checkEdr(opts: EdrCheckOptions = {}): Promise<EdrResult> {
 │   ⚠  终端安全检查未通过                     │
 │                                             │
 │   未检测到企业安全客户端。                  │
-│   请安装或启动：                            │
-│       亚信安全 OfficeScan Client            │
+│   请安装或启动公司终端安全客户端，          │
 │   完成后点击下方按钮重新检测。              │
 │                                             │
 │   [ 重新检测 ]    [ 刷新页面 ]              │
@@ -410,11 +395,12 @@ npm run dev                      # 不设变量 → 真实 fetch（默认）
 
 ### 11.3 终端识别 Mock
 
-通过 URL 参数强制覆盖（仅 dev 环境生效，生产构建中剥掉），便于在 PC 上测移动端分支：
+通过 URL 参数强制覆盖（仅 dev 环境生效，生产构建中剥掉），便于在一台机器上测三种分支：
 
 ```
-http://localhost:5173/check?redirect=...&force=mobile
-http://localhost:5173/check?redirect=...&force=pc
+http://localhost:5173/check?redirect=...&force=pc       # Windows，跑 EDR
+http://localhost:5173/check?redirect=...&force=mac      # Mac，免检直跳
+http://localhost:5173/check?redirect=...&force=mobile   # 移动端，免检直跳
 ```
 
 实现：`detectRuntime()` 内读 `import.meta.env.DEV` + `URLSearchParams`。
@@ -429,20 +415,26 @@ http://localhost:5173/check?redirect=...&force=pc
 
 实现完成后需在以下环境验证：
 
-| 类型 | 浏览器                   | 期望分支          |
-| ---- | ------------------------ | ----------------- |
-| PC   | Chrome (Windows)         | EDR 检测 → 跳飞书 |
-| PC   | Edge (Windows)           | EDR 检测 → 跳飞书 |
-| PC   | Firefox (Windows)        | EDR 检测 → 跳飞书 |
-| PC   | 飞书 PC 客户端内置浏览器 | EDR 检测 → 跳飞书 |
-| 移动 | iPhone Safari            | 跳过 EDR → 跳飞书 |
-| 移动 | Android Chrome           | 跳过 EDR → 跳飞书 |
-| 移动 | 飞书移动端内置浏览器     | 跳过 EDR → 跳飞书 |
+| 类型     | 浏览器                       | 期望分支          |
+| -------- | ---------------------------- | ----------------- |
+| Windows  | Chrome (Windows)             | EDR 检测 → 跳飞书 |
+| Windows  | Edge (Windows)               | EDR 检测 → 跳飞书 |
+| Windows  | Firefox (Windows)            | EDR 检测 → 跳飞书 |
+| Windows  | 飞书 PC 客户端内置浏览器     | EDR 检测 → 跳飞书 |
+| Mac      | Safari (macOS)               | EDR 检测 → 跳飞书 |
+| Mac      | Chrome (macOS)               | EDR 检测 → 跳飞书 |
+| Mac      | 飞书 Mac 客户端内置浏览器    | EDR 检测 → 跳飞书 |
+| 移动     | iPhone Safari                | 跳过 EDR → 跳飞书 |
+| 移动     | iPad Safari（含"桌面网站"）  | 跳过 EDR → 跳飞书 |
+| 移动     | Android Chrome               | 跳过 EDR → 跳飞书 |
+| 移动     | 飞书移动端内置浏览器         | 跳过 EDR → 跳飞书 |
 
-每个 PC 环境分别验证两种 EDR 状态：
+每个 PC 环境（Mac / Windows）分别验证两种 EDR 状态：
 
-- OfficeScan 运行中 → `/check` Loading 后跳转 redirect
-- OfficeScan 停止 → 进入 `/failed`
+- 安全客户端运行中（8445 回 200 + `errorCode:200`） → `/check` Loading 后跳转 redirect
+- 安全客户端停止 / 端口不通 → 进入 `/failed`
+
+> 移动端**不应**跑 EDR、也不应进 `/failed`，需直接跳转 redirect。
 
 ---
 
@@ -454,11 +446,10 @@ npm run build        # 产物在 dist/
 
 部署步骤：
 
-1. 公司内网 DNS 加 A 记录：`lccalhost.xlbsoft.com  A  127.0.0.1`
-2. 每台 PC 预装本地 web 服务（如 nginx），监听 `:80`，root 指向 `dist/`
-3. 配置 SPA fallback：所有未知路径 → `index.html`（react-router 需要）
-4. 上网行为管理系统 (B) 配置 302 目标：
-   `http://lccalhost.xlbsoft.com/check?redirect=<urlencoded_feishu_auth_url>`
+1. 门户 SPA：托管 `dist/`，配置 SPA fallback（所有未知路径 → `index.html`，react-router 需要）
+2. 后端 API（`apps/api`）部署在能反向到达员工 PC 8445 端口的网络位置
+3. 同源部署或在 SPA 注入 `VITE_API_BASE_URL` 指向后端
+4. 上网行为管理系统 (B) 配置 302 目标：`<门户地址>/check?redirect=<urlencoded_feishu_auth_url>`
 
 ---
 
