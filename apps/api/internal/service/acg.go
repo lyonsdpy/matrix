@@ -110,9 +110,10 @@ func (s *ACGService) CheckEDR(ctx context.Context, clientIP string) (EDRCheckRes
 	ip := normalizeProbeIP(parsed)
 
 	url := fmt.Sprintf("https://%s:%d%s", joinHostPort(ip), s.edrPort, s.requestPath)
-	// 发空 POST body：客户端响应的 errorInfo="Error Params" 正是空参数引起的，
-	// 这恰好是我们用于判定端口存活的稳定信号。
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(""))
+	// 发 `{}` 作为 POST body：与运维 curl 实测形态对齐。客户端对参数无要求时
+	// 会回 errorCode:200 + errorInfo:"Error Params"，这正是我们判定端口存活
+	// 的稳定信号。
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
 	if err != nil {
 		return EDRCheckResult{}, err
 	}
