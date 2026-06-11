@@ -4,14 +4,15 @@ const GO_API_URL = process.env.GO_API_URL!;
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET!;
 const JWT_EXPIRY_HOURS = parseInt(process.env.JWT_EXPIRY_HOURS ?? "24", 10);
 
-// 跳转统一用回调地址的 origin，而非 request.url 的 host：
-// 反向代理链路里 Host 可能被改写成内网地址（如 localhost:8088），导致跳到打不开的地址。
-const APP_ORIGIN = new URL(process.env.LARK_REDIRECT_URI!).origin;
-
 // GET /api/auth/callback?code=&state=
 // 飞书 OAuth 回调地址，由飞书开放平台配置指向此处。
 // 流程：验证 state → 调 Go API exchange → 写 session cookie → 302 首页。
 export async function GET(request: NextRequest) {
+  // 跳转统一用回调地址的 origin，而非 request.url 的 host：
+  // 反向代理链路里 Host 可能被改写成内网地址（如 localhost:8088），导致跳到打不开的地址。
+  // 必须在请求时取值：LARK_REDIRECT_URI 是运行时环境变量，构建时不存在。
+  const APP_ORIGIN = new URL(process.env.LARK_REDIRECT_URI!).origin;
+
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
