@@ -4,6 +4,10 @@ const GO_API_URL = process.env.GO_API_URL!;
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET!;
 const JWT_EXPIRY_HOURS = parseInt(process.env.JWT_EXPIRY_HOURS ?? "24", 10);
 
+// 跳转统一用回调地址的 origin，而非 request.url 的 host：
+// 反向代理链路里 Host 可能被改写成内网地址（如 localhost:8088），导致跳到打不开的地址。
+const APP_ORIGIN = new URL(process.env.LARK_REDIRECT_URI!).origin;
+
 // GET /api/auth/callback?code=&state=
 // 飞书 OAuth 回调地址，由飞书开放平台配置指向此处。
 // 流程：验证 state → 调 Go API exchange → 写 session cookie → 302 首页。
@@ -16,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   // state 不匹配则拒绝，防止 CSRF
   if (!code || !state || !savedState || state !== savedState) {
-    return NextResponse.redirect(new URL("/login?error=invalid_state", request.url));
+    return NextResponse.redirect(new URL("/login?error=invalid_state", APP_ORIGIN));
   }
 
   let token: string;
@@ -40,10 +44,10 @@ export async function GET(request: NextRequest) {
     expiresAt = data.expires_at;
     user = data.user;
   } catch {
-    return NextResponse.redirect(new URL("/login?error=auth_failed", request.url));
+    return NextResponse.redirect(new URL("/login?error=auth_failed", APP_ORIGIN));
   }
 
-  const response = NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(new URL("/", APP_ORIGIN));
 
   // 清除临时 state cookie
   response.cookies.delete("lark_oauth_state");
