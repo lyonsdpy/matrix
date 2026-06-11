@@ -1,0 +1,29 @@
+[Unit]
+Description=Matrix Go API (Gin)
+# 依赖网络就绪；若 PostgreSQL / Neo4j 同机以 systemd 运行，把它们加到 After/Wants
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=matrix
+Group=matrix
+
+# 关键：config.Load("configs/config.yaml") 是相对路径，
+# WorkingDirectory 必须是 configs/ 的父目录，否则启动即报找不到配置
+WorkingDirectory=/opt/matrix/api
+ExecStart=/opt/matrix/api/server
+
+# MATRIX_CRYPTO_KEY 等敏感变量放这里，文件权限 600、不入库
+EnvironmentFile=/etc/matrix/api.env
+
+Restart=on-failure
+RestartSec=3
+
+# 基础加固
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

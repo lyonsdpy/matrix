@@ -1,0 +1,29 @@
+[Unit]
+Description=Matrix Web (Next.js)
+# web 服务端会调 Go API，故在其之后启动
+After=network-online.target matrix-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=matrix
+Group=matrix
+
+# 需先在本目录执行过 next build（.next 产物 + node_modules 齐全）
+WorkingDirectory=/opt/matrix/web
+# 非 standalone 模式，用 next start 拉起；node 路径按服务器 `which node` 调整
+ExecStart=/usr/bin/node /opt/matrix/web/node_modules/next/dist/bin/next start --port 3000
+
+Environment=NODE_ENV=production
+# GO_API_URL / LARK_* / INTERNAL_SECRET / HTTPS_ONLY 等放这里，权限 600、不入库
+EnvironmentFile=/etc/matrix/web.env
+
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

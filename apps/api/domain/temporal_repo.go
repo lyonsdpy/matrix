@@ -6,7 +6,10 @@ import (
 )
 
 // NodeVersionRepository 节点版本快照的存储接口。
-// 实现可选择写入 Neo4j（作为 :NodeVersion 节点）或 PostgreSQL。
+//
+// 存储约束：版本快照一律落 PostgreSQL，禁止写入 Neo4j。
+// Neo4j 图只保存当前事实（每个节点仅一份活态），历史版本沉到关系库，
+// 以免图随时间维度膨胀、混入 :NodeVersion 之类的历史节点。
 type NodeVersionRepository interface {
 	// SaveNodeVersion 在节点变更时记录旧版本快照。
 	SaveNodeVersion(ctx context.Context, v *NodeVersion) error
@@ -19,6 +22,10 @@ type NodeVersionRepository interface {
 }
 
 // EdgeVersionRepository 边版本快照的存储接口，与 NodeVersionRepository 对称。
+//
+// 存储约束：边的历史版本一律落 PostgreSQL，禁止写入 Neo4j。
+// Neo4j 图里每条关系始终只有一条活边，变更时原地更新属性而非新建边；
+// 旧版本快照写入本接口（PostgreSQL），保证图只保存当前事实。
 type EdgeVersionRepository interface {
 	SaveEdgeVersion(ctx context.Context, v *EdgeVersion) error
 	ListEdgeVersions(ctx context.Context, edgeID string) ([]*EdgeVersion, error)

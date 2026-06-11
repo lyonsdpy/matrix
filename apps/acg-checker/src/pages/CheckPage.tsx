@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Spinner } from '../components/Spinner'
 import { checkEdr } from '../lib/edr'
 import { buildDevFeishuAuthUrl } from '../lib/feishu'
-import { goRedirect, parseRedirectParam } from '../lib/redirect'
+import { buildFeishuAuthorizeUrl, goRedirect, parseRedirectParam } from '../lib/redirect'
 import { detectRuntime } from '../lib/runtime'
 
 type CheckState =
@@ -11,9 +11,27 @@ type CheckState =
   | { kind: 'detecting' }
   | { kind: 'redirecting' }
 
+// ACG 入口形如：/check?response_type=code&client_id=X&redirect_uri=<encoded(...&weburl=...&uplcyid=...)>
+// redirect_uri 内部已由 ACG 嵌好业务参数。D 仅做 client_id→app_id 映射、其它原样透传给飞书。
 function resolveRedirect(search: string): string | null {
-  const fromParam = parseRedirectParam(search)
-  if (fromParam) return fromParam
+  if (import.meta.env.DEV) {
+    console.info('[redirect] D entry URL', window.location.href)
+  }
+
+  // 主路径：ACG OAuth 透传
+  const fromQuery = buildFeishuAuthorizeUrl(search)
+  if (fromQuery) {
+    if (import.meta.env.DEV) {
+      console.info('[redirect] forwarding to Feishu authorize', fromQuery)
+    }
+    return fromQuery
+  }
+
+  // 兼容旧 MVP：?redirect=<encoded Feishu URL>
+  const explicit = parseRedirectParam(search)
+  if (explicit) return explicit
+
+  // dev fallback：本机无 ACG 时用 env 凭据造一个能跑的飞书 URL
   const devFallback = buildDevFeishuAuthUrl()
   if (devFallback && import.meta.env.DEV) {
     console.info('[redirect] using dev fallback Feishu auth URL', devFallback)
